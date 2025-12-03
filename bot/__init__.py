@@ -7,9 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pyrogram import Client
 from pyrogram.enums import ParseMode
 from dotenv import load_dotenv
-from uvloop import install
 
-install()
 basicConfig(format="[%(asctime)s] [%(name)s | %(levelname)s] - %(message)s [%(filename)s:%(lineno)d]",
             datefmt="%m/%d/%Y, %H:%M:%S %p",
             handlers=[FileHandler('log.txt'), StreamHandler()],
