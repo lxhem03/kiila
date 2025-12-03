@@ -59,7 +59,7 @@ async def main():
     LOGS.info('Auto Anime Bot Started!')
     sch.start()
     bot_loop.create_task(queue_loop())
-    bot_loop.create_task(web_server())
+    web_server()
     await fetch_animes()
     await idle()
     LOGS.info('Auto Anime Bot Stopped!')
