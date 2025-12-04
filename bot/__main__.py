@@ -5,7 +5,6 @@ from pyrogram.filters import command, user
 from os import path as ospath, execl, kill
 from sys import executable
 from signal import SIGKILL
-from Nectar import web_server
 from bot import bot, Var, bot_loop, sch, LOGS, ffQueue, ffLock, ffpids_cache, ff_queued
 from bot.core.auto_animes import fetch_animes
 from bot.core.func_utils import clean_up, new_task, editMessage
@@ -60,10 +59,6 @@ async def main():
     LOGS.info('Auto Anime Bot Started!')
     sch.start()
     bot_loop.create_task(queue_loop())
-    http = web.AppRunner(await web_server())
-    await http.setup()
-    bind_address = "0.0.0.0"
-    await web.TCPSite(http, bind_address, 8080).start()
     await fetch_animes()
     await idle()
     LOGS.info('Auto Anime Bot Stopped!')
