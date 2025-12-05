@@ -7,7 +7,7 @@ from traceback import format_exc
 from base64 import urlsafe_b64encode
 from time import time
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from datetime import datetime
+from datetime import timedelta, datetime
 import pytz
 from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
 from .tordownload import TorDownloader
