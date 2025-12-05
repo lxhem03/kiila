@@ -114,8 +114,15 @@ async def add_task(client, message):
     # Resolve AniList data using custom_name as guess
     final_title, anilist_id = await resolve_anilist_title_and_id(custom_name)
 
-    # Start the one-time task
-    bot_loop.create_task(get_animes(rss_title, rss_link, True))
+    
+    bot_loop.create_task(get_animes(
+        name=info.title,
+        torrent=info.link,
+        force=True,
+        anilist_id=anilist_id,
+        custom_name=custom_name,
+        task_id=task_id
+    ))
 
     await sendMessage(message,
         f"<b>Temporary Task Started!</b>\n\n"
