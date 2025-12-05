@@ -67,6 +67,9 @@ async def fetch_animes():
             continue
 
         tasks = await db.get_all_rss_tasks()
+        if not tasks:
+            continue
+
         for task in tasks:
             if not task.get("active", True):
                 continue
@@ -78,38 +81,52 @@ async def fetch_animes():
             avoid_keywords = task["avoid_keywords"]
             task_id = task["task_id"]
 
-            feed = await getfeed(rss_link)  # Full feed
-            if not feed or not feed.entries:
+            # NOW THIS RETURNS FULL FEED (not single entry)
+            feed = await getfeed(rss_link)  # ← index=None = full feed
+
+            # SUPER SAFE CHECK (will never crash again)
+            if not feed or not hasattr(feed, "entries") or not feed.entries:
                 continue
 
-            # Only check first 3 items
+            # Only check the first 3 newest items
             for entry in feed.entries[:3]:
-                title = entry.title
-                link = entry.link
-                guid = entry.get("id") or link
+                try:
+                    title = entry.title
+                    link = entry.link
+                    guid = entry.get("id") or entry.get("guid") or link
+                except Exception:
+                    continue
 
-                # 1. Already processed?
+                # 1. Already processed? → skip
                 if await db.is_processed(task_id, guid):
                     continue
 
-                # 2. Must be 1080p
-                if "1080" not in title.lower():
+                # 2. MUST be 1080p
+                if "1080" not in title.lower() and "1920" not in title.lower():
                     continue
 
-                # 3. Avoid keywords
-                if avoid_keywords and any(kw in title.lower() for kw in avoid_keywords.split(",")):
-                    continue
-
-                # 4. Keywords (ALL must match)
-                if keywords:
-                    kw_list = [k.strip() for k in keywords.split(",")]
-                    if not all(kw in title.lower() for kw in kw_list):
+                # 3. Avoid keywords → any match = skip
+                if avoid_keywords:
+                    if any(kw.strip() in title.lower() for kw in avoid_keywords.split(",") if kw.strip()):
                         continue
 
-                expected = await db.get_today_airing(anilist_id) if anilist_id else None
-                ep_in_title = TextEditor(title).pdata.get("episode_number")
-                if expected and ep_in_title and int(ep_in_title) != expected["expected_ep"]:
-                    continue
+                # 4. Keywords → ALL must be present
+                if keywords:
+                    kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+                    if kw_list and not all(kw in title.lower() for kw in kw_list):
+                        continue
+
+                # 5. Optional: match today's expected episode
+                if anilist_id:
+                    expected = await db.get_today_airing(anilist_id)
+                    if expected:
+                        parser = TextEditor(title)
+                        ep_num = parser.pdata.get("episode_number")
+                        if ep_num and int(ep_num) != expected["expected_ep"]:
+                            continue
+
+                # ALL GOOD → MARK AS PROCESSED & START DOWNLOAD
+                await db.add_processed_item(task_id, guid)
 
                 bot_loop.create_task(get_animes(
                     name=title,
@@ -117,11 +134,9 @@ async def fetch_animes():
                     force=False,
                     anilist_id=anilist_id,
                     custom_name=custom_name,
-                    task_id=task_id,
-                    guid=guid
+                    task_id=task_id
                 ))
-
-async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=None, task_id=None, guid=None):
+async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=None, task_id=None):
     try:
         aniInfo = TextEditor(name)
         await aniInfo.load_anilist(anilist_id=anilist_id, custom_name=custom_name)
@@ -203,8 +218,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         if ani_id:
             ani_cache['completed'].add(ani_id)
-            await db.add_processed_item(task_id, guid)
-
+        
     except Exception as e:
         await rep.report(f"get_animes error (Task {task_id}): {format_exc()}", "error")
         
