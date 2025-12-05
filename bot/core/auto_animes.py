@@ -100,7 +100,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         await ffLock.acquire()
         btns = []
         for qual in Var.QUALS:
-            filename = await aniInfo.get_upname(qual)
+            filename = await aniInfo.get_upname(qual, custom_title=custom_name)
             await editMessage(stat_msg, f"<i>Encoding {qual}p...</i>")
 
             try:
