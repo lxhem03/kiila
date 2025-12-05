@@ -120,8 +120,7 @@ async def add_task(client, message):
         torrent=taskInfo.link,
         force=True,
         anilist_id=anilist_id,
-        custom_name=custom_name,
-        task_id=task_id
+        custom_name=custom_name
     ))
 
     await sendMessage(message,
