@@ -1,13 +1,17 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from bot import Var
 from datetime import datetime
+import pytz
+
+ist = pytz.timezone('Asia/Kolkata')
 
 class MongoDB:
     def __init__(self, uri, database_name):
         self.__client = AsyncIOMotorClient(uri)
         self.__db = self.__client[database_name]
         self.__animes = self.__db.animes[Var.BOT_TOKEN.split(':')[0]]
-        self.__rss_tasks = self.__db.rss_tasks  # New collection for permanent tasks
+        self.__rss_tasks = self.__db.rss_task
+        self.__today_airing = self.__db.today_airing
 
     async def getAnime(self, ani_id):
         botset = await self.__animes.find_one({'_id': ani_id})
@@ -24,7 +28,7 @@ class MongoDB:
         await self.__animes.drop()
 
     async def get_next_task_id(self):
-        """Auto-increment task_id"""
+        """Auto-increment task_id starting from 1"""
         result = await self.__rss_tasks.find_one_and_update(
             {"_id": "TASK_COUNTER"},
             {"$inc": {"count": 1}},
@@ -39,10 +43,11 @@ class MongoDB:
             "task_id": task_id,
             "rss_link": rss_link,
             "custom_name": custom_name.strip(),
-            "keywords": keywords.strip(),
-            "avoid_keywords": avoid_keywords.strip(),
-            "final_title": final_title or custom_name.strip(),
+            "keywords": keywords.strip().lower() if keywords else "",
+            "avoid_keywords": avoid_keywords.strip().lower() if avoid_keywords else "",
+            "final_title": (final_title or custom_name).strip(),
             "anilist_id": anilist_id,
+            "processed_items": [],           # ← Prevents duplicates
             "active": True,
             "added_at": datetime.utcnow()
         }
@@ -50,18 +55,54 @@ class MongoDB:
         return task_id, doc
 
     async def get_all_rss_tasks(self):
-        return await self.__rss_tasks.find({"active": True}).to_list(length=None)
+        return await self.__rss_tasks.find({"active": True}).sort("task_id", 1).to_list(length=None)
 
     async def get_rss_task(self, task_id: int):
         return await self.__rss_tasks.find_one({"task_id": task_id, "active": True})
 
+    async def add_processed_item(self, task_id: int, guid: str):
+        await self.__rss_tasks.update_one(
+            {"task_id": task_id},
+            {"$addToSet": {"processed_items": guid}}
+        )
+
+    async def is_processed(self, task_id: int, guid: str):
+        task = await self.__rss_tasks.find_one(
+            {"task_id": task_id, "processed_items": guid},
+            projection={"_id": 1}
+        )
+        return bool(task)
+
     async def delete_rss_task(self, task_id: int):
-        return await self.__rss_tasks.update_one(
+        await self.__rss_tasks.update_one(
             {"task_id": task_id},
             {"$set": {"active": False}}
         )
 
-    async def deactivate_rss_task(self, task_id: int):
-        await self.delete_rss_task(task_id)  # same for now
+    async def set_today_airing(self, anilist_id: int, expected_ep: int):
+        today = datetime.now(ist).strftime("%Y-%m-%d")
+        await self.__today_airing.update_one(
+            {"anilist_id": anilist_id, "date": today},
+            {"$set": {
+                "expected_ep": expected_ep,
+                "uploaded": False,
+                "date": today
+            }},
+            upsert=True
+        )
+
+    async def get_today_airing(self, anilist_id: int):
+        today = datetime.now(ist).strftime("%Y-%m-%d")
+        return await self.__today_airing.find_one({
+            "anilist_id": anilist_id,
+            "date": today
+        })
+
+    async def mark_today_uploaded(self, anilist_id: int):
+        today = datetime.now(ist).strftime("%Y-%m-%d")
+        await self.__today_airing.update_one(
+            {"anilist_id": anilist_id, "date": today},
+            {"$set": {"uploaded": True}}
+        )
 
 db = MongoDB(Var.MONGO_URI, "FZAutoAnimes")
