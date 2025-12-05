@@ -102,35 +102,18 @@ async def add_task(client, message):
     rss_link = rss_part.strip()
     custom_name = custom_name.strip()
 
-    if not rss_link.startswith("http"):
-        return await sendMessage(message, "<b>Invalid RSS link!</b>")
+    if not (info := await getfeed(rss_link, 0)):
+        return await sendMessage(message, "<b>Invalid RSS!</b>")
 
-    # Get title from RSS exactly like before
-    if not (taskInfo := await getfeed(rss_link, 0)):
-        return await sendMessage(message, "<b>Invalid or empty RSS feed!</b>")
-
-    rss_title = taskInfo.title  # This is the proven working title from nyaa
-
-    # Resolve AniList data using custom_name as guess
-    final_title, anilist_id = await resolve_anilist_title_and_id(custom_name)
-
-    
+    # FORCE UPLOAD — NO FILTERS
     bot_loop.create_task(get_animes(
-        name=rss_title,
-        torrent=taskInfo.link,
-        force=True,
-        anilist_id=anilist_id,
+        name=info.title,
+        torrent=info.link,
+        force=True,           # ← BYPASSES DB CHECK
         custom_name=custom_name
     ))
 
-    await sendMessage(message,
-        f"<b>Temporary Task Started!</b>\n\n"
-        f"• RSS Title: <code>{rss_title}</code>\n"
-        f"• Your Name: <code>{custom_name}</code>\n"
-        f"• Final Title → <code>{final_title}</code>\n"
-        f"• AniList ID: <code>{anilist_id or 'Not found'}</code>"
-    )
-
+    await sendMessage(message, f"<b>Force Task Started:</b> <code>{custom_name}</code>")
 
 # ===================== /addlink - PERMANENT AUTO TASK =====================
 @bot.on_message(command('addlink') & private & user(Var.ADMINS))
@@ -191,23 +174,44 @@ async def add_permanent_task(client, message):
 @bot.on_message(command('listlink') & private & user(Var.ADMINS))
 @new_task
 async def list_tasks(client, message):
+    page = 1
+    if len(message.text.split()) > 1:
+        try:
+            page = int(message.text.split()[1])
+        except:
+            page = 1
+
     tasks = await db.get_all_rss_tasks()
-    if not tasks:
-        return await sendMessage(message, "<i>No permanent tasks found.</i>")
+    total = len(tasks)
+    per_page = 4
+    pages = (total + per_page - 1) // per_page
+    page = max(1, min(page, pages or 1))
 
-    text = "<b>Permanent RSS Tasks:</b>\n\n"
-    for t in tasks:
+    start = (page - 1) * per_page
+    end = start + per_page
+    current_tasks = tasks[start:end]
+
+    text = f"<b>Permanent Tasks (Page {page}/{pages or 1})</b>\n\n"
+    for t in current_tasks:
         text += (
-            f"• <b>ID:</b> <code>{t['task_id']}</code>\n"
-            f"  <b>Title:</b> <code>{t['final_title']}</code>\n"
-            f"  <b>Custom:</b> <code>{t['custom_name']}</code>\n"
-            f"  <b>AniList ID:</b> <code>{t['anilist_id'] or '—'}</code>\n"
-            f"  <b>Keywords:</b> <code>{t['keywords'] or '—'}</code>\n"
-            f"  <b>Avoid:</b> <code>{t['avoid_keywords'] or '—'}</code>\n"
-            f"  <b>Link:</b> <code>{t['rss_link'][:50]}...</code>\n\n"
+            f"<b>{t['task_id']}.</b> <code>{t['custom_name']}</code>\n"
+            f"   • 1080p Only • Keywords: <code>{t['keywords'] or 'Any'}</code>\n"
+            f"   • Avoid: <code>{t['avoid_keywords'] or 'None'}</code>\n\n"
         )
-    await sendMessage(message, text)
 
+    buttons = []
+    if page > 1:
+        buttons.append(InlineKeyboardButton("◀ PRV", callback_data=f"listlink_{page-1}"))
+    if page < pages:
+        buttons.append(InlineKeyboardButton("NXT ▶", callback_data=f"listlink_{page+1}"))
+
+    await message.reply(text, reply_markup=InlineKeyboardMarkup([buttons]) if buttons else None)
+
+@bot.on_callback_query(filters.regex("^listlink_"))
+async def list_cb(client, cq):
+    page = int(cq.data.split("_")[1])
+    await list_tasks(client, cq.message.edit_text("Loading...", quote=True))
+    await cq.answer()
 
 # ===================== /deletelink =====================
 @bot.on_message(command('deletelink') & private & user(Var.ADMINS))
