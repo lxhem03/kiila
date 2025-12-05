@@ -93,22 +93,26 @@ class TextEditor:
         return "https://telegra.ph/file/112ec08e59e73b6189a20.jpg"
 
     @handle_logs
-    async def get_upname(self, qual=""):
-        anime_name = self.pdata.get("anime_title") or "Unknown"
-        codec = 'HEVC' if 'libx265' in ffargs.get(qual, []) else 'AV1' if 'libaom-av1' in ffargs.get(qual, []) else ''
-        lang = 'Multi-Audio' if 'multi-audio' in self.__name.lower() else 'Sub'
-        season = "01"
+    async def get_upname(self, qual="", custom_title=None):
+        title = custom_title or self.pdata.get("anime_title")
+        
+        season_num = "1"
         if s := self.pdata.get("anime_season"):
-            season = str(s[-1]) if isinstance(s, list) else str(s)
-        titles = self.adata.get("title", {})
-        title = titles.get("english") or titles.get("romaji") or anime_name
+            if isinstance(s, list):
+                season_num = str(s[-1]) if s else "1"
+            else:
+                season_num = str(s)
+
         ep = self.pdata.get("episode_number") or "??"
-        return f"[S{season}-E{ep}] {title} [{qual}p] [{codec}] [{lang}] {Var.BRAND_UNAME}.mkv"
+        quality = f"{qual}p" if qual else ""
+        sub = "Sub"
+
+        return f"[S{season_num}-E{ep}] {title} [{quality}] [{sub}] @{Var.BRAND_UNAME}"
 
     @handle_logs
     async def get_caption(self):
         titles = self.adata.get("title", {})
-        title = titles.get("english") or titles.get("romaji") or "Unknown Anime"
+        title = titles.get("english") or titles.get("romaji")
         genres = ", ".join(f"{GENRES_EMOJI.get(g, 'Film')} #{g.replace(' ', '_')}" for g in (self.adata.get("genres") or []))
         plot = self.adata.get("description", "No description available.")
 
