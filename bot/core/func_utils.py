@@ -19,7 +19,7 @@ from feedparser import parse as feedparse
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.types import InlineKeyboardButton
 from pyrogram.errors import MessageNotModified, FloodWait, UserNotParticipant, ReplyMarkupInvalid, MessageIdInvalid
-
+import feedparser
 from bot import bot, bot_loop, LOGS, Var
 from .reporter import rep
 
@@ -34,7 +34,10 @@ def handle_logs(func):
     
 async def sync_to_async(func, *args, wait=True, **kwargs):
     pfunc = partial(func, *args, **kwargs)
-    future = bot_loop.run_in_executor(ThreadPoolExecutor(max_workers=cpu_count() * 125), pfunc)
+    future = bot_loop.run_in_executor(
+        ThreadPoolExecutor(max_workers=8),  # 8 is more than enough
+        pfunc
+    )
     return await future if wait else future
     
 def new_task(func):
@@ -43,16 +46,32 @@ def new_task(func):
         return bot_loop.create_task(func(*args, **kwargs))
     return wrapper
 
-async def getfeed(link, index=0):
-    try:
-        feed = await sync_to_async(feedparse, link)
-        return feed.entries[index]
-    except IndexError:
-        return None
-    except Exception as e:
-        LOGS.error(format_exc())
-        return None
 
+async def getfeed(link, index=None):
+    """
+    Returns:
+        - Full feed object with .entries list → if index is None
+        - Single entry → if index is given
+    """
+    try:
+        feed = await sync_to_async(feedparser.parse, link)
+        
+        # If feed is broken or empty
+        if feed.bozo or not hasattr(feed, "entries") or not feed.entries:
+            return None
+
+        if index is not None:
+            try:
+                return feed.entries[index]
+            except IndexError:
+                return None
+        
+        return feed
+
+    except Exception as e:
+        LOGS.error(f"getfeed failed for {link} failed:\n{format_exc()}")
+        return None
+        
 @handle_logs
 async def aio_urldownload(link):
     async with ClientSession() as sess:
