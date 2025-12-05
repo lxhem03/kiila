@@ -116,8 +116,8 @@ async def add_task(client, message):
 
     
     bot_loop.create_task(get_animes(
-        name=info.title,
-        torrent=info.link,
+        name=rss_title,
+        torrent=taskInfo.link,
         force=True,
         anilist_id=anilist_id,
         custom_name=custom_name,
