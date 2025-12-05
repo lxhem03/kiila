@@ -102,8 +102,11 @@ async def add_task(client, message):
     rss_link = rss_part.strip()
     custom_name = custom_name.strip()
 
-    if not (info := await getfeed(rss_link, 0)):
-        return await sendMessage(message, "<b>Invalid RSS!</b>")
+    feed = await getfeed(rss_link)
+    if not feed or not feed.entries:
+        return await sendMessage(message, "<b>Invalid or empty RSS feed!</b>")
+
+    info = feed.entries[0]  # Take the newest item for one-time task
 
     # FORCE UPLOAD — NO FILTERS
     bot_loop.create_task(get_animes(
