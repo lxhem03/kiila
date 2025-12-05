@@ -7,7 +7,8 @@ from traceback import format_exc
 from base64 import urlsafe_b64encode
 from time import time
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
+from datetime import datetime
+import pytz
 from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
 from .tordownload import TorDownloader
 from .database import db
@@ -24,13 +25,45 @@ btn_formatter = {
     '360':'𝟯𝟲𝟬𝗽'
 }
 
-async def fetch_animes():
-    """Replaces old Var.RSS_ITEMS loop — now uses database tasks"""
-    await rep.report("Database RSS Scheduler Started!", "info")
+
+ist = pytz.timezone('Asia/Kolkata')
+
+async def daily_airing_job():
+    """Runs every day at 1:00 AM IST"""
     while True:
-        await asleep(30)  # Check every 90 seconds
+        now = datetime.now(ist)
+        next_run = now.replace(hour=1, minute=0, second=0, microsecond=0)
+        if now.hour >= 1:
+            next_run += timedelta(days=1)
+        seconds = (next_run - now).total_seconds()
+        await asleep(seconds)
+
+        await rep.report("Running Daily Airing Schedule Update...", "info")
+        tasks = await db.get_all_rss_tasks()
+        for task in tasks:
+            anilist_id = task.get("anilist_id")
+            if not anilist_id:
+                continue
+            try:
+                data = anilist.get_anime_with_id(anilist_id)
+                if not data:
+                    continue
+                next_ep = data.get("next_airing_ep")
+                if next_ep and next_ep.get("episode"):
+                    ep_num = next_ep["episode"]
+                    await db.set_today_airing(anilist_id, ep_num)
+                    await rep.report(f"Scheduled → {task['custom_name']} EP{ep_num}", "info")
+            except:
+                pass
+
+async def fetch_animes():
+    bot_loop.create_task(daily_airing_job())
+    await rep.report("Smart RSS Scheduler + Daily Airing Job Started!", "info")
+
+    while True:
+        await asleep(90)
+
         if not ani_cache.get('fetch_animes', True):
-            await asleep(10)
             continue
 
         tasks = await db.get_all_rss_tasks()
@@ -41,19 +74,54 @@ async def fetch_animes():
             rss_link = task["rss_link"]
             custom_name = task["custom_name"]
             anilist_id = task["anilist_id"]
+            keywords = task["keywords"]
+            avoid_keywords = task["avoid_keywords"]
             task_id = task["task_id"]
 
-            if info := await getfeed(rss_link, 0):
+            feed = await getfeed(rss_link)  # Full feed
+            if not feed or not feed.entries:
+                continue
+
+            # Only check first 3 items
+            for entry in feed.entries[:3]:
+                title = entry.title
+                link = entry.link
+                guid = entry.get("id") or link
+
+                # 1. Already processed?
+                if await db.is_processed(task_id, guid):
+                    continue
+
+                # 2. Must be 1080p
+                if "1080" not in title.lower():
+                    continue
+
+                # 3. Avoid keywords
+                if avoid_keywords and any(kw in title.lower() for kw in avoid_keywords.split(",")):
+                    continue
+
+                # 4. Keywords (ALL must match)
+                if keywords:
+                    kw_list = [k.strip() for k in keywords.split(",")]
+                    if not all(kw in title.lower() for kw in kw_list):
+                        continue
+
+                expected = await db.get_today_airing(anilist_id) if anilist_id else None
+                ep_in_title = TextEditor(title).pdata.get("episode_number")
+                if expected and ep_in_title and int(ep_in_title) != expected["expected_ep"]:
+                    continue
+
                 bot_loop.create_task(get_animes(
-                    name=info.title,
-                    torrent=info.link,
+                    name=title,
+                    torrent=link,
                     force=False,
                     anilist_id=anilist_id,
                     custom_name=custom_name,
-                    task_id=task_id
+                    task_id=task_id,
+                    guid=guid
                 ))
 
-async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=None, task_id=None):
+async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=None, task_id=None, guid=None):
     try:
         aniInfo = TextEditor(name)
         await aniInfo.load_anilist(anilist_id=anilist_id, custom_name=custom_name)
@@ -135,6 +203,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         if ani_id:
             ani_cache['completed'].add(ani_id)
+            await db.add_processed_item(task_id, guid)
 
     except Exception as e:
         await rep.report(f"get_animes error (Task {task_id}): {format_exc()}", "error")
