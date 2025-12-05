@@ -1,5 +1,5 @@
 from asyncio import sleep as asleep, gather
-from pyrogram.filters import command, private, user
+from pyrogram.filters import command, private, user, regex
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, MessageNotModified
 from bot import bot, bot_loop, Var, ani_cache
@@ -207,7 +207,7 @@ async def list_tasks(client, message):
 
     await message.reply(text, reply_markup=InlineKeyboardMarkup([buttons]) if buttons else None)
 
-@bot.on_callback_query(filters.regex("^listlink_"))
+@bot.on_callback_query(regex("^listlink_"))
 async def list_cb(client, cq):
     page = int(cq.data.split("_")[1])
     await list_tasks(client, cq.message.edit_text("Loading...", quote=True))
