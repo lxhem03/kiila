@@ -225,7 +225,7 @@ async def list_tasks(client, message):
 
 
 # ====================== Callback for pagination ======================
-@bot.on_callback_query(filters.regex(r"^listpg_(\d+)$"))
+@bot.on_callback_query(regex(r"^listpg_(\d+)$"))
 async def list_pagination_cb(client, callback_query):
     page = int(callback_query.data.split("_")[1])
 
