@@ -228,8 +228,13 @@ async def delete_task(client, message):
     except:
         return await sendMessage(message, "<b>Invalid task ID!</b>")
 
-    result = await db.delete_rss_task(task_id)
-    if result.modified_count == 0:
-        return await sendMessage(message, "<b>Task not found or already deleted!</b>")
+    result = await db.__rss_tasks.find_one_and_update(
+        {"task_id": task_id, "active": True},
+        {"$set": {"active": False}},
+        return_document=True
+    )
 
-    await sendMessage(message, f"<b>Task {task_id} has been deactivated.</b>")
+    if not result:
+        return await sendMessage(message, f"<b>Task {task_id} not found or already deleted!</b>")
+
+    await sendMessage(message, f"<b>Task {task_id} - {result['custom_name']} has been DELETED.</b>")
