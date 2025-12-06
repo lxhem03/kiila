@@ -15,12 +15,19 @@ async def start_msg(client, message):
     uid = message.from_user.id
     from_user = message.from_user
     txtargs = message.text.split()
+    
     temp = await sendMessage(message, "<i>Connecting..</i>")
+    
     if not await is_fsubbed(uid):
         txt, btns = await get_fsubs(uid, txtargs)
-        return await editMessage(temp, txt, InlineKeyboardMarkup(btns))
-    if len(txtargs) <= 1:
+        if temp:
+            await editMessage(temp, txt, InlineKeyboardMarkup(btns))
+        return
+
+    if temp: 
         await temp.delete()
+
+    if len(txtargs) <= 1:
         btns = []
         for elem in Var.START_BUTTONS.split():
             try:
@@ -62,7 +69,6 @@ async def start_msg(client, message):
             if msg.empty:
                 return await editMessage(temp, "<b>File Not Found !</b>")
             nmsg = await msg.copy(message.chat.id, reply_markup=None)
-            await temp.delete()
             if Var.AUTO_DEL:
                 async def auto_del(msg, timer):
                     await asleep(timer)
