@@ -58,7 +58,7 @@ async def daily_airing_job():
 
 async def fetch_animes():
     bot_loop.create_task(daily_airing_job())
-    await rep.report("Smart RSS Scheduler + Daily Airing Job Started!", "info")
+    await rep.report("Smart RSS Scheduler + Today's Episode Only Mode Activated!", "info")
 
     while True:
         await asleep(90)
@@ -81,52 +81,59 @@ async def fetch_animes():
             avoid_keywords = task["avoid_keywords"]
             task_id = task["task_id"]
 
-            # NOW THIS RETURNS FULL FEED (not single entry)
-            feed = await getfeed(rss_link)  # ← index=None = full feed
+            # Get today's expected episode (from daily job)
+            expected_ep = None
+            if anilist_id:
+                today_data = await db.get_today_airing(anilist_id)
+                if today_data and not today_data.get("uploaded", False):
+                    expected_ep = today_data["expected_ep"]
 
-            # SUPER SAFE CHECK (will never crash again)
+            if not expected_ep:
+                continue  # No episode airing today → skip this anime
+
+            feed = await getfeed(rss_link)
             if not feed or not hasattr(feed, "entries") or not feed.entries:
                 continue
 
-            # Only check the first 3 newest items
-            for entry in feed.entries[:3]:
+            found = False
+            for entry in feed.entries[:5]:  # Check first 5 just in case
                 try:
                     title = entry.title
                     link = entry.link
                     guid = entry.get("id") or entry.get("guid") or link
-                except Exception:
+                except:
                     continue
 
-                # 1. Already processed? → skip
+                # Already processed?
                 if await db.is_processed(task_id, guid):
                     continue
 
-                # 2. MUST be 1080p
-                if "1080" not in title.lower() and "1920" not in title.lower():
+                # Parse episode number from title
+                parser = TextEditor(title)
+                ep_in_title = parser.pdata.get("episode_number")
+                if not ep_in_title:
+                    continue
+                if int(ep_in_title) != expected_ep:
+                    continue  # Not today's episode → skip
+
+                # 1080p check
+                if "1080" not in title.lower():
                     continue
 
-                # 3. Avoid keywords → any match = skip
+                # Avoid keywords
                 if avoid_keywords:
                     if any(kw.strip() in title.lower() for kw in avoid_keywords.split(",") if kw.strip()):
                         continue
 
-                # 4. Keywords → ALL must be present
+                # Keywords (ALL must match)
                 if keywords:
                     kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
                     if kw_list and not all(kw in title.lower() for kw in kw_list):
                         continue
 
-                # 5. Optional: match today's expected episode
-                if anilist_id:
-                    expected = await db.get_today_airing(anilist_id)
-                    if expected:
-                        parser = TextEditor(title)
-                        ep_num = parser.pdata.get("episode_number")
-                        if ep_num and int(ep_num) != expected["expected_ep"]:
-                            continue
-
-                # ALL GOOD → MARK AS PROCESSED & START DOWNLOAD
+                # TODAY'S EPISODE FOUND → UPLOAD ONCE
                 await db.add_processed_item(task_id, guid)
+                await db.mark_today_uploaded(anilist_id)  # Prevent re-upload
 
                 bot_loop.create_task(get_animes(
                     name=title,
@@ -136,6 +143,13 @@ async def fetch_animes():
                     custom_name=custom_name,
                     task_id=task_id
                 ))
+
+                found = True
+                break  # Stop after finding today's episode
+
+            if found:
+                await rep.report(f"Uploaded today's episode: {custom_name} EP{expected_ep}", "info")
+
 async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=None, task_id=None):
     try:
         aniInfo = TextEditor(name)
