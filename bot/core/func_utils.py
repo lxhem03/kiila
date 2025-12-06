@@ -99,7 +99,8 @@ async def get_telegraph(out):
 """,
         )
     return page.get("url")
-    
+
+
 async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
     try:
         # FIX: Resolve reply_markup duplication
@@ -112,6 +113,7 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
                 kwargs.pop('reply_markup', None)
 
         if isinstance(chat, int):
+            print("IF executed in sendMessage")
             return await bot.send_message(
                 chat_id=chat,
                 text=text,
@@ -121,6 +123,7 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
                 **kwargs
             )
         else:
+            print("ELSE executed in sendMessage")
             return await chat.reply_text(
                 text=text,
                 quote=True,
