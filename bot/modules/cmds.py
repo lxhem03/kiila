@@ -219,22 +219,17 @@ async def list_cb(client, cq):
 # ===================== /deletelink =====================
 @bot.on_message(command('deletelink') & private & user(Var.ADMINS))
 @new_task
-async def delete_task(client, message):
+async def _deletelink(client, message):
     if len(message.text.split()) < 2:
-        return await sendMessage(message, "<b>Usage:</b> /deletelink <task_id>")
+        return await sendMessage(message, "<b>Usage: /deletelink <task_id></b>")
 
     try:
         task_id = int(message.text.split()[1])
     except:
         return await sendMessage(message, "<b>Invalid task ID!</b>")
 
-    result = await db.__rss_tasks.find_one_and_update(
-        {"task_id": task_id, "active": True},
-        {"$set": {"active": False}},
-        return_document=True
-    )
+    result = await db.delete_rss_task(task_id)
+    if result is None or result.modified_count == 0:
+        return await sendMessage(message, "<b>Task not found or already deleted!</b>")
 
-    if not result:
-        return await sendMessage(message, f"<b>Task {task_id} not found or already deleted!</b>")
-
-    await sendMessage(message, f"<b>Task {task_id} - {result['custom_name']} has been DELETED.</b>")
+    await sendMessage(message, f"<b>Task {task_id} deleted successfully.</b>")
