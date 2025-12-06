@@ -17,6 +17,10 @@ from .text_utils import TextEditor
 from .ffencoder import FFEncoder
 from .tguploader import TgUploader
 from .reporter import rep
+from AnilistPython import Anilist
+
+
+anilist = Anilist()
 
 btn_formatter = {
     '1080':'𝟭𝟬𝟴𝟬𝗽', 
