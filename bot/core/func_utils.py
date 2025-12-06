@@ -101,19 +101,62 @@ async def get_telegraph(out):
     return page.get("url")
     
 async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
+    """
+    Universal send message function
+    chat: can be Message object or chat_id (int)
+    buttons: InlineKeyboardMarkup or None
+    """
     try:
         if isinstance(chat, int):
-            return await bot.send_message(chat_id=chat, text=text, disable_web_page_preview=True,
-                                        disable_notification=False, reply_markup=buttons, **kwargs)
+            return await bot.send_message(
+                chat_id=chat,
+                text=text,
+                disable_web_page_preview=True,
+                disable_notification=False,
+                reply_markup=buttons,
+                **kwargs
+            )
         else:
-            return await chat.reply(text=text, quote=True, disable_web_page_preview=True, disable_notification=False,
-                                    reply_markup=buttons, **kwargs)
+            # Replying to a message
+            return await chat.reply_text(
+                text=text,
+                quote=True,
+                disable_web_page_preview=True,
+                disable_notification=False,
+                reply_markup=buttons,
+                **kwargs
+            )
     except FloodWait as f:
-        await rep.report(f, "warning")
-        sleep(f.value * 1.2)
+        await rep.report(f"FloodWait {f.value}s", "warning")
+        await asleep(f.value * 1.2)
         return await sendMessage(chat, text, buttons, get_error, **kwargs)
     except ReplyMarkupInvalid:
         return await sendMessage(chat, text, None, get_error, **kwargs)
+    except Exception as e:
+        await rep.report(format_exc(), "error")
+        if get_error:
+            raise e
+        return str(e)
+
+
+async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
+    try:
+        if not msg:
+            return None
+        return await msg.edit_text(
+            text=text,
+            disable_web_page_preview=True,
+            reply_markup=buttons,
+            **kwargs
+        )
+    except FloodWait as f:
+        await rep.report(f"FloodWait {f.value}s", "warning")
+        await asleep(f.value * 1.2)
+        return await editMessage(msg, text, buttons, get_error, **kwargs)
+    except ReplyMarkupInvalid:
+        return await editMessage(msg, text, None, get_error, **kwargs)
+    except (MessageNotModified, MessageIdInvalid):
+        return msg
     except Exception as e:
         await rep.report(format_exc(), "error")
         if get_error:
