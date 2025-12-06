@@ -101,19 +101,17 @@ async def get_telegraph(out):
     return page.get("url")
     
 async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
-    """
-    Universal send message function
-    chat: can be Message object or chat_id (int)
-    buttons: InlineKeyboardMarkup or None
-    """
     try:
-        # Handle reply_markup from kwargs to avoid duplication
-        reply_markup = kwargs.pop('reply_markup', None)
-        if buttons is not None:
-            reply_markup = buttons  # Prioritize buttons param
+        # FIX: Resolve reply_markup duplication
+        reply_markup = buttons
+        if 'reply_markup' in kwargs:
+            if reply_markup is None:
+                reply_markup = kwargs.pop('reply_markup')
+            else:
+                # If both, prioritize buttons param
+                kwargs.pop('reply_markup', None)
 
         if isinstance(chat, int):
-            # Sending to chat_id
             return await bot.send_message(
                 chat_id=chat,
                 text=text,
@@ -123,13 +121,12 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
                 **kwargs
             )
         else:
-            # Replying to a message
             return await chat.reply_text(
                 text=text,
                 quote=True,
                 disable_web_page_preview=True,
                 disable_notification=False,
-                reply_markup=reply_markup,  # Use the resolved one
+                reply_markup=reply_markup,
                 **kwargs
             )
     except FloodWait as f:
@@ -143,7 +140,7 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
         if get_error:
             raise e
         return str(e)
-
+        
 async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
     try:
         if not msg:
