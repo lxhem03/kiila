@@ -107,13 +107,19 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
     buttons: InlineKeyboardMarkup or None
     """
     try:
+        # Handle reply_markup from kwargs to avoid duplication
+        reply_markup = kwargs.pop('reply_markup', None)
+        if buttons is not None:
+            reply_markup = buttons  # Prioritize buttons param
+
         if isinstance(chat, int):
+            # Sending to chat_id
             return await bot.send_message(
                 chat_id=chat,
                 text=text,
                 disable_web_page_preview=True,
                 disable_notification=False,
-                reply_markup=buttons,
+                reply_markup=reply_markup,
                 **kwargs
             )
         else:
@@ -123,7 +129,7 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
                 quote=True,
                 disable_web_page_preview=True,
                 disable_notification=False,
-                reply_markup=buttons,
+                reply_markup=reply_markup,  # Use the resolved one
                 **kwargs
             )
     except FloodWait as f:
@@ -137,7 +143,6 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
         if get_error:
             raise e
         return str(e)
-
 
 async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
     try:
