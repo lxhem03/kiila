@@ -107,7 +107,7 @@ class TextEditor:
         quality = f"{qual}p" if qual else ""
         sub = "Sub"
 
-        return f"[S{season_num}-E{ep}] {title} [{quality}] [{sub}] @{Var.BRAND_UNAME}"
+        return f"[S{season_num}-E{ep}] {title} [{quality}] [{sub}] {Var.BRAND_UNAME}.mkv"
 
     @handle_logs
     async def get_caption(self):
