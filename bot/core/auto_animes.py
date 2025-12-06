@@ -29,16 +29,11 @@ btn_formatter = {
 ist = pytz.timezone('Asia/Kolkata')
 
 async def daily_airing_job():
-    """Runs every day at 1:00 AM IST"""
+    """Runs every hour, checks airings in next 24 hours"""
     while True:
-        now = datetime.now(ist)
-        next_run = now.replace(hour=1, minute=0, second=0, microsecond=0)
-        if now.hour >= 1:
-            next_run += timedelta(days=1)
-        seconds = (next_run - now).total_seconds()
-        await asleep(seconds)
+        await asleep(3600)
 
-        await rep.report("Running Daily Airing Schedule Update...", "info")
+        await rep.report("Updating Airing Schedule for Next 24h...", "info")
         tasks = await db.get_all_rss_tasks()
         for task in tasks:
             anilist_id = task.get("anilist_id")
@@ -46,16 +41,15 @@ async def daily_airing_job():
                 continue
             try:
                 data = anilist.get_anime_with_id(anilist_id)
-                if not data:
-                    continue
-                next_ep = data.get("next_airing_ep")
-                if next_ep and next_ep.get("episode"):
-                    ep_num = next_ep["episode"]
-                    await db.set_today_airing(anilist_id, ep_num)
-                    await rep.report(f"Scheduled → {task['custom_name']} EP{ep_num}", "info")
-            except:
-                pass
-
+                if data:
+                    next_air = data.get("next_airing_ep")
+                    if next_air and next_air.get("timeUntilAiring", 0) < 86400:
+                        ep = next_air["episode"]
+                        await db.set_today_airing(anilist_id, ep)
+                        await rep.report(f"Upcoming EP{ep} for {task['custom_name']} in <24h", "info")
+            except Exception as e:
+                await rep.report(f"Airing update failed for ID {anilist_id}: {e}", "warning")
+                
 async def fetch_animes():
     bot_loop.create_task(daily_airing_job())
     await rep.report("Smart RSS Scheduler + Daily Airing Job Started!", "info")
