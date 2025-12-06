@@ -73,12 +73,6 @@ class MongoDB:
         )
         return bool(task)
 
-    async def delete_rss_task(self, task_id: int):
-        await self.__rss_tasks.update_one(
-            {"task_id": task_id},
-            {"$set": {"active": False}}
-        )
-
     async def set_today_airing(self, anilist_id: int, expected_ep: int):
         today = datetime.now(ist).strftime("%Y-%m-%d")
         await self.__today_airing.update_one(
@@ -98,11 +92,18 @@ class MongoDB:
             "date": today
         })
 
+    async def delete_rss_task(self, task_id: int):
+        result = await self.__rss_tasks.update_one(
+            {"task_id": task_id},
+            {"$set": {"active": False}}
+        )
+        return result
+
     async def mark_today_uploaded(self, anilist_id: int):
         today = datetime.now(ist).strftime("%Y-%m-%d")
         await self.__today_airing.update_one(
             {"anilist_id": anilist_id, "date": today},
             {"$set": {"uploaded": True}}
         )
-
+        
 db = MongoDB(Var.MONGO_URI, "FZAutoAnimes")
