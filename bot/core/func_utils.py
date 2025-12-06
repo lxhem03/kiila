@@ -132,7 +132,7 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
     except FloodWait as f:
         await rep.report(f"FloodWait {f.value}s", "warning")
         await asleep(f.value * 1.2)
-        return await sendMessage(chat, text, buttons, get_error, **kwargs)
+        return pass
     except ReplyMarkupInvalid:
         pass
     except Exception as e:
