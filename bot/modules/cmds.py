@@ -173,49 +173,94 @@ async def add_permanent_task(client, message):
     )
 
 
-# ===================== /listlink =====================
+# ====================== /listlink with pagination (4 per page) ======================
 @bot.on_message(command('listlink') & private & user(Var.ADMINS))
 @new_task
 async def list_tasks(client, message):
+    arg = message.text.split()
     page = 1
-    if len(message.text.split()) > 1:
+    if len(arg) > 1:
         try:
-            page = int(message.text.split()[1])
+            page = int(arg[1])
+            if page < 1:
+                page = 1
         except:
             page = 1
 
     tasks = await db.get_all_rss_tasks()
-    total = len(tasks)
+    if not tasks:
+        return await sendMessage(message, "<i>No permanent tasks found.</i>")
+
     per_page = 4
-    pages = (total + per_page - 1) // per_page
-    page = max(1, min(page, pages or 1))
+    total_pages = (len(tasks) + per_page - 1) // per_page
+    page = min(page, total_pages)
 
     start = (page - 1) * per_page
     end = start + per_page
-    current_tasks = tasks[start:end]
+    page_tasks = tasks[start:end]
 
-    text = f"<b>Permanent Tasks (Page {page}/{pages or 1})</b>\n\n"
-    for t in current_tasks:
+    text = f"<b>Active RSS Tasks</b> (Page {page}/{total_pages})\n\n"
+    for task in page_tasks:
         text += (
-            f"<b>{t['task_id']}.</b> <code>{t['custom_name']}</code>\n"
-            f"   • 1080p Only • Keywords: <code>{t['keywords'] or 'Any'}</code>\n"
-            f"   • Avoid: <code>{t['avoid_keywords'] or 'None'}</code>\n\n"
+            f"<b>{task['task_id']} • {task['custom_name']}</b>\n"
+            f"   • 1080p Only\n"
+            f"   Keywords: <code>{task['keywords'] or 'Any'}</code>\n"
+            f"   • Avoid: <code>{task['avoid_keywords'] or 'None'}</code>\n"
+            f"   • Link: <code>{task['rss_link'][:45]}...</code>\n\n"
+        )
+
+    # Buttons
+    buttons = []
+    if page > 1:
+        buttons.append(InlineKeyboardButton("◀ PREV", callback_data=f"listpg_{page-1}"))
+    if page < total_pages:
+        buttons.append(InlineKeyboardButton("NEXT ▶", callback_data=f"listpg_{page+1}"))
+
+    reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
+
+    if message.reply_to_message:
+        await message.reply_to_message.delete()
+
+    await sendMessage(message, text, reply_markup=reply_markup)
+
+
+# ====================== Callback for pagination ======================
+@bot.on_callback_query(filters.regex(r"^listpg_(\d+)$"))
+async def list_pagination_cb(client, callback_query):
+    page = int(callback_query.data.split("_")[1])
+
+    tasks = await db.get_all_rss_tasks()
+    if not tasks:
+        return await callback_query.answer("No tasks!", show_alert=True)
+
+    per_page = 4
+    total_pages = (len(tasks) + per_page - 1) // per_page
+    page = min(max(1, page), total_pages)
+
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_tasks = tasks[start:end]
+
+    text = f"<b>Active RSS Tasks</b> (Page {page}/{total_pages})\n\n"
+    for task in page_tasks:
+        text += (
+            f"<b>{task['task_id']} • {task['custom_name']}</b>\n"
+            f"   • 1080p Only\n"
+            f"   Keywords: <code>{task['keywords'] or 'Any'}</code>\n"
+            f"   • Avoid: <code>{task['avoid_keywords'] or 'None'}</code>\n"
+            f"   • Link: <code>{task['rss_link'][:45]}...</code>\n\n"
         )
 
     buttons = []
     if page > 1:
-        buttons.append(InlineKeyboardButton("◀ PRV", callback_data=f"listlink_{page-1}"))
-    if page < pages:
-        buttons.append(InlineKeyboardButton("NXT ▶", callback_data=f"listlink_{page+1}"))
+        buttons.append(InlineKeyboardButton("◀ PREV", callback_data=f"listpg_{page-1}"))
+    if page < total_pages:
+        buttons.append(InlineKeyboardButton("NEXT ▶", callback_data=f"listpg_{page+1}"))
 
-    await message.reply(text, reply_markup=InlineKeyboardMarkup([buttons]) if buttons else None)
+    reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
 
-@bot.on_callback_query(regex("^listlink_"))
-async def list_cb(client, cq):
-    page = int(cq.data.split("_")[1])
-    await list_tasks(client, cq.message.edit_text("Loading...", quote=True))
-    await cq.answer()
-
+    await callback_query.message.edit_text(text, reply_markup=reply_markup)
+    await callback_query.answer()
 # ===================== /deletelink =====================
 @bot.on_message(command('deletelink') & private & user(Var.ADMINS))
 @new_task
