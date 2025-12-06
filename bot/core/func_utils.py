@@ -134,7 +134,7 @@ async def sendMessage(chat, text, buttons=None, get_error=False, **kwargs):
         await asleep(f.value * 1.2)
         return await sendMessage(chat, text, buttons, get_error, **kwargs)
     except ReplyMarkupInvalid:
-        return await sendMessage(chat, text, None, get_error, **kwargs)
+        pass
     except Exception as e:
         await rep.report(format_exc(), "error")
         if get_error:
