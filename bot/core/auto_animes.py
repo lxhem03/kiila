@@ -150,10 +150,8 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         # GET CLEAN TITLE
         title_en = (aniInfo.adata.get("title", {}).get("english") or 
-                   aniInfo.adata.get("title", {}).get("romaji") or 
-                   custom_name or 
-                   aniInfo.pdata.get("anime_title") or 
-                   "Unknown Anime")
+                   aniInfo.adata.get("title", {}).get("romaji") or  
+                   aniInfo.pdata.get("anime_title"))
 
         # SEND "NEW EPISODE" MESSAGE
         info_msg = await sendMessage(
@@ -172,7 +170,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         )
 
         # DOWNLOAD
-        dl = await TorDownloader("./downloads").download(torrent, name)
+        dl = await TorDownloader("/ramdisk").download(torrent, name)
         if not dl or not ospath.exists(dl):
             await editMessage(info_msg, "<i>Download failed!</i>")
             return
@@ -215,7 +213,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
                 return
 
             link = f"https://t.me/{(await bot.get_me()).username}?start={await encode('get-'+str(msg.id * abs(Var.FILE_STORE)))}"
-            text = f"{btn_formatter[qual]} - {convertBytes(msg.document.file_size)}"
+            text = f"{btn_formatter[qual]}"
             if btns and len(btns[-1]) == 1:
                 btns[-1].insert(1, InlineKeyboardButton(text, url=link))
             else:
