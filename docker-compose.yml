@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  anime-god:
+    build: .
+    container_name: anime-god-v4
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./downloads:/app/downloads
+
+      - ramdisk:/ramdisk
+
+    environment:
+      - PYTHONUNBUFFERED=1
+
+volumes:
+  ramdisk:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=12g,uid=1000,gid=1000,noatime
