@@ -10,7 +10,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from datetime import timedelta, datetime
 import pytz
 from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
-from .modules.up_posts.py import mark_schedule_uploaded
+from bot.modules.up_posts import mark_schedule_uploaded
 from .tordownload import TorDownloader
 from .database import db
 from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes
