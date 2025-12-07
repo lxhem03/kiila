@@ -6,11 +6,11 @@ import re
 
 from torrentp import TorrentDownloader
 from bot import LOGS
-from bot.core.func_utils import handle_logs
+from .func_utils import handle_logs, editMessage, sendMessage
 from .reporter import rep
 
 from time import time
-from bot.core.progress import progress_for_pyrogram
+from .progress import progress_for_pyrogram
 
 class TorDownloader:
     def __init__(self, path="."):
