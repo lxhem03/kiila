@@ -270,3 +270,15 @@ def convertBytes(sz) -> str:
         sz /= 2**10
         ind += 1
     return f"{round(sz, 2)} {Units[ind]}B"
+
+def humanbytes(size):
+    """Convert bytes to human readable format (e.g. 1.5 GB)"""
+    if not size:
+        return "0 B"
+    power = 2**10
+    n = 0
+    units = {0: 'B', 1: 'KB', 2: 'MB', 3: 'GB', 4: 'TB'}
+    while size > power:
+        size /= power
+        n += 1
+    return f"{size:.2f} {units[n]}"
