@@ -10,6 +10,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from datetime import timedelta, datetime
 import pytz
 from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
+from bot.modules.up_posts.py import mark_schedule_uploaded
 from .tordownload import TorDownloader
 from .database import db
 from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes
@@ -207,8 +208,9 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         if ani_id:
             ani_cache['completed'].add(ani_id)
+        # After all qualities uploaded and before ani_cache['completed'].add(ani_id)
         if anilist_id:
-            await db.mark_today_uploaded(anilist_id)            
+            bot_loop.create_task(mark_schedule_uploaded(anilist_id))            
         
     except Exception as e:
         await rep.report(f"get_animes error (Task {task_id}): {format_exc()}", "error")
