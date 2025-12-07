@@ -7,7 +7,7 @@ import re
 from torrentp import TorrentDownloader
 from bot import LOGS
 from bot.core.func_utils import handle_logs
-from bot.core.reporter import rep
+from .reporter import rep
 
 from time import time
 from bot.core.progress import progress_for_pyrogram
