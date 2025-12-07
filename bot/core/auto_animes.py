@@ -197,7 +197,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         btns = []
         for qual in Var.QUALS:
             filename = await aniInfo.get_upname(qual, custom_title=custom_name)
-            await edit illusion(stat_msg, f"<i>Encoding {qual}p...</i>")
+            await editMessage(stat_msg, f"<i>Encoding {qual}p...</i>")
 
             try:
                 out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
