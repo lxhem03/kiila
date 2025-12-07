@@ -5,12 +5,9 @@ from aiohttp import ClientSession
 import re
 
 from torrentp import TorrentDownloader
-from bot import LOGS, Var
-from .func_utils import handle_logs, editMessage, sendMessage
-from .reporter import rep
-
-from time import time
-from .progress import progress_for_pyrogram
+from bot import LOGS
+from bot.core.func_utils import handle_logs
+from bot.core.reporter import rep
 
 class TorDownloader:
     def __init__(self, path="."):
@@ -20,54 +17,36 @@ class TorDownloader:
     @handle_logs
     async def download(self, torrent, name=None):
         try:
-            # Create status message
-            status_msg = await sendMessage(Var.MAIN_CHANNEL, "<i>Starting download...</i>")
-            start_time = time()
-
             if torrent.startswith("magnet:"):
-                if "dn=" not in torrent and name:
-                    clean_name = re.sub(r"[^\w\s\-–—()]+", "", name).strip()
+                # Fix common broken magnets (missing &dn= or invalid encoding)
+                if "dn=" not in torrent:
+                    clean_name = re.sub(r"[^\w\s\-–—()]+", "", name or "Unknown").strip()
                     clean_name = re.sub(r"\s+", ".", clean_name)
                     torrent += f"&dn={clean_name}"
 
                 torp = TorrentDownloader(torrent, self.__downdir)
-
-                # Hook progress callback
-                async def progress_callback(transferred, total):
-                    await progress_for_pyrogram(transferred, total, status_msg, start_time, f"Downloading: {name or 'Unknown'}")
-
-                torp.progress_callback = progress_callback
                 await torp.start_download()
-
+                # Fallback name if torrent has no name
                 final_path = ospath.join(self.__downdir, name or "Unknown_Anime")
-            else:
+                return final_path
+
+            elif torrent.endswith(".torrent") or "nyaa.si/download" in torrent:
                 torfile = await self.get_torfile(torrent)
                 if not torfile:
-                    await editMessage(status_msg, "Failed to download .torrent file")
                     return None
 
                 torp = TorrentDownloader(torfile, self.__downdir)
-                async def progress_callback(transferred, total):
-                    await progress_for_pyrogram(transferred, total, status_msg, start_time, "Downloading torrent file...")
-
-                torp.progress_callback = progress_callback
                 await torp.start_download()
                 await aioremove(torfile)
 
                 try:
-                    final_path = ospath.join(self.__downdir, torp._torrent_info._info.name())
+                    torrent_name = torp._torrent_info._info.name()
+                    return ospath.join(self.__downdir, torrent_name)
                 except:
-                    final_path = ospath.join(self.__downdir, name or "Unknown_Anime")
-
-            await editMessage(status_msg, f"Download Complete for {name}\n\nMoving to encoding ⚙️")
-            await rep.report(f"Download Complete for {name}\n\nFile Path:\n<code>{final_path}</code>", "info")
-
-            return final_path
+                    return ospath.join(self.__downdir, name or "Unknown_Anime")
 
         except Exception as e:
-            await rep.report(f"TorDownloader failed: {e}", "error")
-            if 'status_msg' in locals():
-                await editMessage(status_msg, f"Download failed: {str(e)}")
+            await rep.report(f"TorDownloader failed: {e}\nTorrent: {torrent}", "error")
             return None
 
     @handle_logs
