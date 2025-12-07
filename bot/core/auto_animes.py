@@ -148,19 +148,42 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         await rep.report(f"New episode found → {name}", "info")
 
+        # GET CLEAN TITLE
+        title_en = (aniInfo.adata.get("title", {}).get("english") or 
+                   aniInfo.adata.get("title", {}).get("romaji") or 
+                   custom_name or 
+                   aniInfo.pdata.get("anime_title") or 
+                   "Unknown Anime")
+
+        # SEND "NEW EPISODE" MESSAGE
+        info_msg = await sendMessage(
+            Var.MAIN_CHANNEL,
+            f"<b>New Episode Found!</b>\n\n"
+            f"<b>Title:</b> <code>{title_en}</code>\n"
+            f"<b>Episode:</b> <code>{ep_no or '??'}</code>\n\n"
+            f"<i>Downloading started...</i>"
+        )
+
+        # POST WITH POSTER + CAPTION
         post_msg = await bot.send_photo(
             Var.MAIN_CHANNEL,
             photo=await aniInfo.get_poster(),
             caption=await aniInfo.get_caption()
         )
 
-        await asleep(1.5)
-        stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"<b>Anime:</b> <i>{name}</i>\n\n<i>Downloading...</i>")
-
+        # DOWNLOAD
         dl = await TorDownloader("./downloads").download(torrent, name)
         if not dl or not ospath.exists(dl):
-            await editMessage(stat_msg, "<i>Download failed!</i>")
+            await editMessage(info_msg, "<i>Download failed!</i>")
             return
+
+        # DELETE INFO MESSAGE + SEND ENCODING STATUS
+        try:
+            await info_msg.delete()
+        except:
+            pass
+
+        stat_msg = await sendMessage(Var.MAIN_CHANNEL, "<i>Starting encoding...</i>")
 
         post_id = post_msg.id
         ffEvent = Event()
@@ -174,7 +197,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         btns = []
         for qual in Var.QUALS:
             filename = await aniInfo.get_upname(qual, custom_title=custom_name)
-            await editMessage(stat_msg, f"<i>Encoding {qual}p...</i>")
+            await edit illusion(stat_msg, f"<i>Encoding {qual}p...</i>")
 
             try:
                 out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
@@ -208,10 +231,10 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         if ani_id:
             ani_cache['completed'].add(ani_id)
-        # After all qualities uploaded and before ani_cache['completed'].add(ani_id)
+
         if anilist_id:
-            bot_loop.create_task(mark_schedule_uploaded(anilist_id))            
-        
+            bot_loop.create_task(mark_schedule_uploaded(anilist_id))
+
     except Exception as e:
         await rep.report(f"get_animes error (Task {task_id}): {format_exc()}", "error")
         
