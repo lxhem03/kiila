@@ -5,7 +5,7 @@ from aiohttp import ClientSession
 import re
 
 from torrentp import TorrentDownloader
-from bot import LOGS
+from bot import LOGS, Var
 from .func_utils import handle_logs, editMessage, sendMessage
 from .reporter import rep
 
