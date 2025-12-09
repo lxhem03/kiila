@@ -3,7 +3,7 @@ version: '3.8'
 services:
   anime-god:
     build: .
-    container_name: anime-god-v4
+    container_name: Animesguy
     restart: unless-stopped
     volumes:
       - ./data:/app/data
