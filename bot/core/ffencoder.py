@@ -36,7 +36,7 @@ class FFEncoder:
         # ALL TEMP FILES IN RAM
         self.__ram_input = "/ramdisk/ff_temp_input.mkv"
         self.__ram_output = "/ramdisk/ff_temp_output.mkv"
-        self.__prog_file = "/ramdisk/ff_progress.txt"
+        self.__prog_file = "/ramdisk/prog.txt"
         
         # FINAL DESTINATION ON SSD
         self.final_path = ospath.join("encode", name)
@@ -44,12 +44,8 @@ class FFEncoder:
         self.__start_time = time()
 
     async def progress(self):
-        import os
         self.__total_time = await mediainfo(self.dl_path, get_duration=True) or 1800.0
-
-        # Unique progress file per encode
-        prog_file = f"/ramdisk/prog_{os.getpid()}.txt"
-        self.__prog_file = prog_file
+        
 
         last_percent = -1
         while not (self.__proc is None or self.is_cancelled):
@@ -118,10 +114,8 @@ class FFEncoder:
 
         # Build command
         ffcode = ffargs[self.__qual].format(self.__ram_input, self.__ram_output)
-        ffcode = ffcode.replace("{pid}", str(os.getpid()))
+        LOGS.info(f'FFmpeg Command: {ffcode}')
 
-        LOGS.info(f"FFmpeg Command: {ffcode}")
-        
         self.__proc = await create_subprocess_shell(ffcode, stdout=PIPE, stderr=PIPE)
         ffpids_cache.append(self.__proc.pid)
 
@@ -158,7 +152,7 @@ class FFEncoder:
         return self.final_path
         # At the very end of start_encode(), after success
         try:
-            await aioremove(self.__prog_file)
+            await aioremove("/ramdisk/prog.txt")
         except:
             pass
 
