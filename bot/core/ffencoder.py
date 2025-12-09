@@ -119,8 +119,8 @@ class FFEncoder:
         await aiorename(self.dl_path, self.__ram_input)
 
         # Build command
-        ffcode = ffargs[self.__qual].format(self.__ram_input, self.__prog_file, self.__ram_output)
-        LOGS.info(f'FFmpeg Command: {ffcode}')
+        ffcode = ffargs[self.__qual].format(self.__ram_input, self.__ram_output)
+        LOGS.info(f"FFmpeg Command: {ffcode}")
 
         self.__proc = await create_subprocess_shell(ffcode, stdout=PIPE, stderr=PIPE)
         ffpids_cache.append(self.__proc.pid)
