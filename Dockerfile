@@ -1,19 +1,23 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+FROM python:3.10-slim-buster
 
 WORKDIR /usr/src/app
 RUN chmod 777 /usr/src/app
 
-RUN apt-get update && apt-get install -y \
-    python3 python3-pip git wget pv jq mediainfo \
-    libgl1 libglib2.0-0 ca-certificates && \
+RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+    sed -i '/security.debian.org/d' /etc/apt/sources.list
+
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y git wget pv jq python3-dev mediainfo gcc \
+        libsm6 libxext6 libfontconfig1 libxrender1 libgl1-mesa-glx && \
     rm -rf /var/lib/apt/lists/*
 
-RUN wget -O ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz && \
-    tar -xJf ffmpeg.tar.xz && \
-    mv ffmpeg-*-amd64-static/ffmpeg ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ && \
-    rm -rf ffmpeg*
+COPY --from=mwader/static-ffmpeg:6.1 /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=mwader/static-ffmpeg:6.1 /ffprobe /usr/local/bin/ffprobe
+RUN chmod 755 /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+
 
 COPY . .
+
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p /ramdisk
