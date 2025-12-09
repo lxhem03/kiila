@@ -1,4 +1,4 @@
-# bot/core/ffencoder.py — FULL RAM ENCODING (NO CROSS-DEVICE ERRORS)
+# bot/core/ffencoder.py - fix 
 
 from re import findall 
 from math import floor
@@ -43,7 +43,10 @@ class FFEncoder:
         self.__start_time = time()
 
     async def progress(self):
+        # Get real duration once
         self.__total_time = await mediainfo(self.dl_path, get_duration=True) or 1.0
+
+        last_percent = 0
 
         while not (self.__proc is None or self.is_cancelled):
             try:
@@ -57,21 +60,45 @@ class FFEncoder:
                 await asleep(8)
                 continue
 
-            time_done = floor(int(findall("out_time_ms=(\d+)", text)[-1]) / 1000000) if findall("out_time_ms=(\d+)", text) else 0
-            ensize = int(findall(r"total_size=(\d+)", text)[-1]) if findall(r"total_size=(\d+)", text) else 0
+            # Extract values safely
+            out_time_ms = findall(r"out_time_ms=(\d+)", text)
+            total_size = findall(r"total_size=(\d+)", text)
+
+            if not out_time_ms:
+                await asleep(8)
+                continue
+
+            time_done = int(out_time_ms[-1]) / 1_000_000  # seconds
+            current_size = int(total_size[-1]) if total_size else 0
 
             diff = time() - self.__start_time
-            speed = ensize / diff if diff > 0 else 0
-            percent = round((time_done / self.__total_time) * 100, 2)
-            tsize = ensize / (percent / 100) if percent > 0 else ensize
-            eta = (tsize - ensize) / speed if speed > 0 else 0
+            if diff < 1:
+                await asleep(8)
+                continue
 
-            bar = "█" * floor(percent / 8) + "▒" * (12 - floor(percent / 8))
+            speed = current_size / diff  # bytes per second
+
+            # ESTIMATED FINAL SIZE = current speed × total duration
+            estimated_final_size = int(speed * self.__total_time)
+
+            # Progress percentage
+            percent = round((time_done / self.__total_time) * 100, 2)
+            if percent == last_percent:  # avoid spam
+                await asleep(5)
+                continue
+            last_percent = percent
+
+            # ETA
+            remaining_time = (self.__total_time - time_done) if speed > 0 else 0
+            eta = remaining_time / speed if speed > 0 else 0
+
+            # Progress bar
+            bar = "█" * floor(percent / 8) + "░" * (12 - floor(percent / 8))
 
             progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></b></blockquote>
 <blockquote>‣ <b>Status :</b> <i>Encoding {self.__qual}p</i>
     <code>[{bar}]</code> {percent}%</blockquote>
-<blockquote>   ‣ <b>Size :</b> {convertBytes(ensize)} / ~{convertBytes(tsize)}
+<blockquote>   ‣ <b>Size :</b> {convertBytes(current_size)} → ~{convertBytes(estimated_final_size)}
     ‣ <b>Speed :</b> {convertBytes(speed)}/s
     ‣ <b>Elapsed :</b> {convertTime(diff)}
     ‣ <b>ETA :</b> {convertTime(eta)}</blockquote>
@@ -79,9 +106,11 @@ class FFEncoder:
 
             await editMessage(self.message, progress_str)
 
-            if "progress=end" in text:
+            # Stop when ffmpeg says "progress=end"
+            if "progress=end" in text.lower():
                 break
-            await asleep(8)
+
+            await asleep(6)  # update every ~6 seconds
 
     async def start_encode(self):
         # Clean old temp files
