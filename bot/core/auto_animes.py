@@ -174,6 +174,10 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         if not dl or not ospath.exists(dl):
             await editMessage(info_msg, "<i>Download failed!</i>")
             return
+        try:
+            await rep.report(f"Downloaded successfully! \n<b>Title:</b> <code>{title_en}</code>\n<b>Episode:</b> <code>{ep_no or '??'}</code>\n\nFile path:{dl}", "info")
+        except Exception as e:
+            return
 
         # DELETE INFO MESSAGE + SEND ENCODING STATUS
         try:
