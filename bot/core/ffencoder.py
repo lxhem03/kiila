@@ -60,6 +60,7 @@ class FFEncoder:
                     text = await f.read()
 
                 if not text.strip():
+                    LOGS.info("Progress file is empty")
                     await asleep(5)
                     continue
 
