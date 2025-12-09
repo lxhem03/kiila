@@ -9,7 +9,8 @@ from aiofiles.os import remove as aioremove, rename as aiorename, path as aiopat
 from shlex import split as ssplit
 from asyncio import sleep as asleep, gather, create_subprocess_shell, create_task
 from asyncio.subprocess import PIPE
-import shutil  # ← THIS FIXES CROSS-DEVICE MOVE
+import shutil
+import os
 
 from bot import Var, bot_loop, ffpids_cache, LOGS
 from .func_utils import mediainfo, convertBytes, convertTime, sendMessage, editMessage
@@ -116,12 +117,11 @@ class FFEncoder:
         await aiorename(self.dl_path, self.__ram_input)
 
         # Build command
-        ffcode = ffargs[self.__qual].format(
-            self.__ram_input,
-            self.__ram_output
-        ).replace("{pid}", str(os.getpid()))
-        LOGS.info(f"FFmpeg Command: {ffcode}")
+        ffcode = ffargs[self.__qual].format(self.__ram_input, self.__ram_output)
+        ffcode = ffcode.replace("{pid}", str(os.getpid()))
 
+        LOGS.info(f"FFmpeg Command: {ffcode}")
+        
         self.__proc = await create_subprocess_shell(ffcode, stdout=PIPE, stderr=PIPE)
         ffpids_cache.append(self.__proc.pid)
 
