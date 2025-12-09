@@ -1,4 +1,4 @@
-# bot/core/ffencoder.py - ram usage 
+# bot/core/ffencoder.py
 
 from re import findall 
 from math import floor
@@ -9,8 +9,7 @@ from aiofiles.os import remove as aioremove, rename as aiorename, path as aiopat
 from shlex import split as ssplit
 from asyncio import sleep as asleep, gather, create_subprocess_shell, create_task
 from asyncio.subprocess import PIPE
-import shutil
-import os
+import shutil  # For cross-device final move
 
 from bot import Var, bot_loop, ffpids_cache, LOGS
 from .func_utils import mediainfo, convertBytes, convertTime, sendMessage, editMessage
@@ -44,47 +43,46 @@ class FFEncoder:
         self.__start_time = time()
 
     async def progress(self):
-        self.__total_time = await mediainfo(self.dl_path, get_duration=True) or 1800.0
-        
+        self.__total_time = await mediainfo(self.dl_path, get_duration=True) or 1800.0  # fallback 30 min
 
         last_percent = -1
+        loop_count = 0
+
         while not (self.__proc is None or self.is_cancelled):
+            loop_count += 1
+
             try:
-                async with aiopen(prog_file, 'r') as f:
-                    lines = await f.readlines()
-            except:
-                await asleep(5)
-                continue
+                if not await aiopath.exists(self.__prog_file):
+                    await asleep(5)
+                    continue
 
-            if not lines:
-                await asleep(5)
-                continue
+                async with aiopen(self.__prog_file, 'r') as f:
+                    text = await f.read()
 
-            data = {}
-            for line in lines:
-                if '=' in line:
-                    k, v = line.strip().split('=', 1)
-                    data[k] = v
+                if not text.strip():
+                    await asleep(5)
+                    continue
 
-            if 'out_time_ms' not in data:
-                await asleep(5)
-                continue
+                out_time_ms = findall(r"out_time_ms=(\d+)", text)
+                if not out_time_ms:
+                    await asleep(5)
+                    continue
 
-            current_time = int(data['out_time_ms']) / 1_000_000
-            percent = round(current_time / self.__total_time * 100, 1)
+                current_time = int(out_time_ms[-1]) / 1_000_000
+                percent = round((current_time / self.__total_time) * 100, 1)
 
-            if percent == last_percent:
-                await asleep(4)
-                continue
-            last_percent = percent
+                if percent == last_percent:
+                    await asleep(5)
+                    continue
 
-            diff = time() - self.__start_time
-            speed_str = data.get('speed', '0x')
-            speed = float(speed_str.replace('x', '')) if 'x' in speed_str else 1.0
+                last_percent = percent
+                diff = time() - self.__start_time
+                speed_str = findall(r"speed=(\S+)", text)
+                speed = float(speed_str[0].replace('x', '')) if speed_str else 1.0
 
-            bar = "█" * int(percent // 8) + "░" * (12 - int(percent // 8))
+                bar = "█" * int(percent // 8) + "░" * (12 - int(percent // 8))
 
-            progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></b></blockquote>
+                progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></blockquote>
 <blockquote>‣ <b>Status :</b> <i>Encoding {self.__qual}p</i>
     <code>[{bar}]</code> {percent}%</blockquote>
 <blockquote>   ‣ <b>Speed :</b> {speed:.2f}x
@@ -92,9 +90,16 @@ class FFEncoder:
     ‣ <b>ETA :</b> {convertTime((self.__total_time - current_time) / speed)}</blockquote>
 <blockquote>‣ <b>Progress :</b> <code>{Var.QUALS.index(self.__qual)+1}/{len(Var.QUALS)}</code></blockquote>"""
 
-            await editMessage(self.message, progress_str)
+                await editMessage(self.message, progress_str)
 
-            if data.get('progress') == 'end':
+                if "progress=end" in text.lower():
+                    break
+
+            except Exception as e:
+                LOGS.error(f"Progress error: {e}")
+                await asleep(10)
+
+            if loop_count > 1000:  # Safety
                 break
 
             await asleep(6)
@@ -105,15 +110,15 @@ class FFEncoder:
             if await aiopath.exists(f):
                 await aioremove(f)
 
-        # Create progress file
+        # Create progress file in RAM
         async with aiopen(self.__prog_file, 'w'):
             pass
 
-        # Move input to RAM (same device → fast rename)
+        # Move input to RAM
         await aiorename(self.dl_path, self.__ram_input)
 
         # Build command
-        ffcode = ffargs[self.__qual].format(self.__ram_input, self.__ram_output)
+        ffcode = ffargs[self.__qual].format(self.__ram_input, self.__prog_file, self.__ram_output)
         LOGS.info(f'FFmpeg Command: {ffcode}')
 
         self.__proc = await create_subprocess_shell(ffcode, stdout=PIPE, stderr=PIPE)
@@ -126,13 +131,13 @@ class FFEncoder:
 
         ffpids_cache.remove(self.__proc.pid)
 
-        # CANCELLED → restore original
+        # Cancelled
         if self.is_cancelled:
             if await aiopath.exists(self.__ram_input):
                 await aiorename(self.__ram_input, self.dl_path)
             return None
 
-        # FAILED → restore + report
+        # Failed
         if return_code != 0:
             err = (await self.__proc.stderr.read()).decode()
             await rep.report(f"FFmpeg failed: {err}", "error")
@@ -140,21 +145,21 @@ class FFEncoder:
                 await aiorename(self.__ram_input, self.dl_path)
             return None
 
-        # SUCCESS → move final file from RAM → SSD using shutil (cross-device safe)
+        # Success — move final from RAM to SSD with shutil
         if await aiopath.exists(self.__ram_output):
-            # shutil.move works across devices (copy + delete)
             shutil.move(self.__ram_output, self.final_path)
 
-        # Restore original file
+        # Restore original
         if await aiopath.exists(self.__ram_input):
             await aiorename(self.__ram_input, self.dl_path)
 
-        return self.final_path
-        # At the very end of start_encode(), after success
+        # Clean progress
         try:
-            await aioremove("/ramdisk/prog.txt")
+            await aioremove(self.__prog_file)
         except:
             pass
+
+        return self.final_path
 
     async def cancel_encode(self):
         self.is_cancelled = True
