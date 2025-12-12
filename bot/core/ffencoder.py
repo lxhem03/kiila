@@ -1,4 +1,4 @@
-# bot/core/ffencoder.py \ FINAL VERSION (PROGRESS WORKS 100%)
+# bot/core/ffencoder.py / FINAL VERSION (PROGRESS WORKS 100%)
 
 from re import findall 
 from math import floor
@@ -38,11 +38,13 @@ class FFEncoder:
 
         self.__start_time = time()
 
-    async def progress(self):
+async def progress(self):
         self.__total_time = await mediainfo(self.dl_path, get_duration=True) or 1800.0
         LOGS.info(f"Progress monitoring started | Duration: {self.__total_time}s")
 
         last_percent = -1
+        current_frame = 0
+        fps = 0.0
 
         while not (self.__proc is None or self.is_cancelled):
             try:
@@ -57,12 +59,22 @@ class FFEncoder:
                     await asleep(5)
                     continue
 
-                out_time_ms = findall(r"out_time_ms=(\d+)", text)
-                if not out_time_ms:
-                    await asleep(5)
-                    continue
+                # Parse frame and fps (always available)
+                frame_match = findall(r"frame=\s*(\d+)", text)
+                fps_match = findall(r"fps=\s*([\d.]+)", text)
+                speed_match = findall(r"speed=\s*([\d.]+)x", text)
 
-                current_time = int(out_time_ms[-1]) / 1_000_000
+                if frame_match:
+                    current_frame = int(frame_match[-1])
+                if fps_match:
+                    fps = float(fps_match[-1])
+
+                # Calculate time from frame + fps
+                if fps > 0:
+                    current_time = current_frame / fps
+                else:
+                    current_time = 0
+
                 percent = round((current_time / self.__total_time) * 100, 1)
 
                 if abs(percent - last_percent) < 0.5:
@@ -71,8 +83,7 @@ class FFEncoder:
 
                 last_percent = percent
                 diff = time() - self.__start_time
-                speed_match = findall(r"speed=([\d.]+)x", text)
-                speed = float(speed_match[0]) if speed_match else 1.0
+                speed = float(speed_match[-1]) if speed_match and speed_match[-1] != 'N/A' else 1.0
                 eta = (self.__total_time - current_time) / speed if speed > 0 else 0
 
                 bar = "█" * int(percent // 8) + "░" * (12 - int(percent // 8))
@@ -81,6 +92,7 @@ class FFEncoder:
 <blockquote>‣ <b>Status :</b> <i>Encoding {self.__qual}p</i>
     <code>[{bar}]</code> {percent}%</blockquote>
 <blockquote>   ‣ <b>Speed :</b> {speed:.2f}x
+    ‣ <b>FPS :</b> {fps:.1f}
     ‣ <b>Elapsed :</b> {convertTime(diff)}
     ‣ <b>ETA :</b> {convertTime(eta)}</blockquote>
 <blockquote>‣ <b>Progress :</b> <code>{Var.QUALS.index(self.__qual)+1}/{len(Var.QUALS)}</code></blockquote>"""
@@ -92,7 +104,7 @@ class FFEncoder:
                     break
 
             except Exception as e:
-                LOGS.error(f"Progress error: {e}")
+                LOGS.error(f"Progress loop error: {e}")
                 await asleep(10)
 
             await asleep(6)
