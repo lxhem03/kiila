@@ -1,4 +1,4 @@
-# bot/core/ffencoder.py — FULL RAM ENCODING (PIPE PROGRESS)
+# bot/core/ffencoder.py \ FULL RAM ENCODING (PIPE PROGRESS)
 
 from re import findall 
 from math import floor
@@ -40,39 +40,50 @@ class FFEncoder:
 
     async def progress(self):
         self.__total_time = await mediainfo(self.dl_path, get_duration=True) or 1800.0
+        LOGS.info(f"Progress started | Duration: {self.__total_time}s")
 
         last_percent = -1
-        buffer = ""
+        current_time = 0.0
+        speed = 1.0
 
         while not (self.__proc is None or self.is_cancelled):
             try:
-                data = await self.__proc.stdout.read(512)
+                if not self.__proc.stdout:
+                    await asleep(5)
+                    continue
+
+                data = await self.__proc.stdout.read(1024)
                 if not data:
                     await asleep(5)
                     continue
 
-                buffer += data.decode()
-
-                lines = buffer.split('\n')
-                buffer = lines[-1]
-                lines = lines[:-1]
+                text = data.decode(errors='ignore')
+                lines = text.strip().split('\n')
 
                 for line in lines:
-                    if '=' in line:
-                        k, v = line.strip().split('=', 1)
-                        if k == 'out_time_ms':
-                            current_time = int(v) / 1_000_000
-                        elif k == 'speed':
-                            speed_str = v.replace('x', '')
+                    if '=' not in line:
+                        continue
+
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    if key == 'out_time_ms':
+                        try:
+                            current_time = int(value) / 1_000_000
+                        except:
+                            current_time = 0.0
+                    elif key == 'speed':
+                        try:
+                            speed_str = value.replace('x', '')
                             speed = float(speed_str) if speed_str != 'N/A' else 1.0
+                        except:
+                            speed = 1.0
 
-                if 'current_time' not in locals():
-                    await asleep(5)
-                    continue
-
+                # Calculate progress
                 percent = round((current_time / self.__total_time) * 100, 1)
 
-                if abs(percent - last_percent) < 0.5:
+                if abs(percent - last_percent) < 0.5:  # avoid spam
                     await asleep(5)
                     continue
 
@@ -92,14 +103,14 @@ class FFEncoder:
 
                 await editMessage(self.message, progress_str)
 
-                if 'progress=end' in buffer:
+                if 'progress=end' in text.lower():
                     break
 
             except Exception as e:
-                LOGS.error(f"Progress error: {e}")
+                LOGS.error(f"Progress loop error: {e}")
                 await asleep(10)
 
-            await asleep(6)
+            await asleep(6)    
 
     async def start_encode(self):
         for f in [self.__ram_input, self.__ram_output]:
