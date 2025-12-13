@@ -1,4 +1,4 @@
-# bot/core/ffencoder.py \ FULL RAM ENCODING + CORRECT INDENTATION + PROGRESS BAR WORKING
+# bot/core/ffencoder.py - FULL RAM ENCODING + CORRECT INDENTATION + PROGRESS BAR WORKING
 
 from re import findall 
 from math import floor
@@ -9,7 +9,7 @@ from aiofiles.os import remove as aioremove, rename as aiorename, path as aiopat
 from asyncio import sleep as asleep, gather, create_subprocess_shell, create_task
 from asyncio.subprocess import PIPE
 import shutil
-
+from html import escape
 from bot import Var, bot_loop, ffpids_cache, LOGS
 from .func_utils import mediainfo, convertBytes, convertTime, editMessage
 from .reporter import rep
@@ -122,7 +122,7 @@ class FFEncoder:
 
                 bar = "█" * int(percent // 8) + "░" * (12 - int(percent // 8))
 
-                progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></b></blockquote>
+                progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i><i>{escape(self.__name)}</i></b></blockquote>
 <blockquote>‣ <b>Status :</b> <i>Encoding {self.__qual}p</i>
     <code>[{bar}]</code> {percent}%</blockquote>
 <blockquote>   ‣ <b>Speed :</b> {speed:.2f}x ({current_fps:.1f} fps)
