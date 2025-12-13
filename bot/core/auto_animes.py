@@ -12,8 +12,8 @@ import pytz
 from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
 from bot.modules.up_posts import mark_schedule_uploaded
 from .tordownload import TorDownloader
-from .database import db
-from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes
+from .database import db 
+from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes, has_english_subs
 from .text_utils import TextEditor
 from .ffencoder import FFEncoder
 from .tguploader import TgUploader
@@ -174,12 +174,16 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         if not dl or not ospath.exists(dl):
             await editMessage(info_msg, "<i>Download failed!</i>")
             return
+        if not await has_english_subs(dl):
+            await editMessage(info_msg, "<i>Aborted: No English subtitles found.</i>")
+            await aioremove(dl)
+            return
+
         try:
-            await rep.report(f"Downloaded successfully! \n<b>Title:</b> <code>{title_en}</code>\n<b>Episode:</b> <code>{ep_no or '??'}</code>\n\nFile path:{dl}", "info")
+            await rep.report(f"Downloaded successfully & Has Esub! \n<b>Title:</b> <code>{title_en}</code>\n<b>Episode:</b> <code>{ep_no or '??'}</code>\n\nFile path:{dl}", "info")
         except Exception as e:
             return
 
-        # DELETE INFO MESSAGE + SEND ENCODING STATUS
         try:
             await info_msg.delete()
         except:
