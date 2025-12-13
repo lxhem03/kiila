@@ -24,7 +24,126 @@ from bot import bot, bot_loop, LOGS, Var
 from .reporter import rep
 import subprocess
 
-async def has_english_subs(filepath: str) -> bool:
+
+async def s_stream(filepath: str) -> str:
+    """
+    Detect subtitle languages in a video file.
+    
+    Returns:
+        'Multi-Subs' -> English + another language exists
+        'English'    -> Only English or undefined subtitles
+        'No-Subs'    -> No subtitle tracks found
+    """
+    try:
+        cmd = [
+            "ffprobe", "-v", "quiet", "-print_format", "json",
+            "-select_streams", "s", "-show_entries", "stream=index:stream_tags=language",
+            filepath
+        ]
+
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        data = jloads(result.stdout)
+
+        streams = data.get("streams", [])
+
+        if not streams:
+            return "No-Subs"
+
+        languages = []
+        for s in streams:
+            lang = s.get("tags", {}).get("language", "").lower().strip()
+
+            if lang in ["eng", "en", "english", ""]:  
+                languages.append("english")
+            else:
+                languages.append(lang)
+
+        unique_langs = set(languages)
+
+        if "english" in unique_langs:
+            if len(unique_langs) > 1:
+                return "Multi-Subs"
+            return "English"
+
+        return "English"
+
+    except Exception as e:
+        print("Subtitle detection error:", e)
+        return "English"
+
+
+async def a_stream(filepath: str):
+    """
+    Returns:
+        'Sub'  -> 1 or 2 audio tracks, ONLY (Japanese/Chinese/Korean) with NO English
+        'Dual' -> 2 audio tracks, ONE Asian (JPN/CHN/KOR) + ONE English
+        False  -> English-only, unsupported languages, more than 2 tracks, or missing language data
+    """
+
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-select_streams", "a",
+            "-show_entries", "stream_tags=language",
+            filepath
+        ]
+
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        data = jloads(result.stdout)
+
+        streams = data.get("streams", [])
+
+        if len(streams) > 2:
+            return False
+        if len(streams) == 0:
+            return False
+
+        langs = []
+
+        for s in streams:
+            lang = s.get("tags", {}).get("language", "").lower().strip()
+
+            if lang == "":
+                return False
+
+            if lang in ["jpn", "jp"]:
+                lang = "japanese"
+            if lang in ["zh", "chi", "zho", "chs", "cht"]:
+                lang = "chinese"
+            if lang in ["ko", "kor"]:
+                lang = "korean"
+            if lang in ["en", "eng"]:
+                lang = "english"
+
+            langs.append(lang)
+
+        unique = set(langs)
+
+        asian_set = {"japanese", "chinese", "korean"}
+
+        if unique == {"english"}:
+            return False
+
+        for l in unique:
+            if l not in asian_set and l != "english":
+                return False
+
+        if unique.issubset(asian_set):
+            return "Sub"
+
+        if "english" in unique and any(l in asian_set for l in unique):
+            if len(unique) == 2:
+                return "Dual"
+
+        return False
+
+    except Exception as e:
+        print("FFprobe error:", e)
+        return False
+
+async def verify_sub(filepath: str) -> bool:
     """
     Returns True if the video has English or undefined subtitles.
     Returns False if no subtitles or no English subs.
