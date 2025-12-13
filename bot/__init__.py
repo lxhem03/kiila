@@ -54,6 +54,7 @@ class Var:
     QUALS = getenv("QUALS", "360 480 720 1080").split()
     
     AS_DOC = getenv("AS_DOC", "True").lower() == "true"
+    PROTECT_CONTENT = getenv("PROTECT_CONTENT", "False").lower() == "true"
     THUMB = getenv("THUMB", "https://te.legra.ph/file/621c8d40f9788a1db7753.jpg")
     AUTO_DEL = getenv("AUTO_DEL", "True").lower() == "true"
     DEL_TIMER = int(getenv("DEL_TIMER", "600"))
