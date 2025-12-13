@@ -1,4 +1,4 @@
-#fv2
+#fv2 - 1
 from asyncio import gather, create_task, sleep as asleep, Event
 from asyncio.subprocess import PIPE
 from os import path as ospath, system
@@ -140,22 +140,16 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
                 return
 
         if "[Batch]" in name:
-            await rep.report(f"Batch skipped: {name}", "warning")
+            await rep.report(f"<blockquote>Batch skipped: {name}</blockquote>", "warning")
             return
 
-        await rep.report(f"New episode found → {name}", "info")
+        await rep.report(f"<blockquote>𝑵𝒆𝒘 𝑬𝒑𝒊𝒔𝒐𝒅𝒆 𝑭𝒐𝒖𝒏𝒅!\n{name}</blockquote>", "info")
 
         title_en = (aniInfo.adata.get("title", {}).get("english") or 
                    aniInfo.adata.get("title", {}).get("romaji") or  
                    aniInfo.pdata.get("anime_title"))
 
-        info_msg = await sendMessage(
-            Var.MAIN_CHANNEL,
-            f"<b>New Episode Found!</b>\n\n"
-            f"<b>Title:</b> <code>{title_en}</code>\n"
-            f"<b>Episode:</b> <code>{ep_no or '??'}</code>\n\n"
-            f"<i>Downloading started...</i>"
-        )
+        info_msg = await sendMessage(Var.MAIN_CHANNEL, f"<i>𝑵𝒆𝒘 𝑬𝒑𝒊𝒔𝒐𝒅𝒆 𝑭𝒐𝒖𝒏𝒅!</i>\n\n✦ 𝑻𝒊𝒕𝒍𝒆: <code>{title_en}</code>\n✦ 𝑬𝒑𝒊𝒔𝒐𝒅𝒆: <code>{ep_no or '??'}</code>\n\n<i>𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈 𝒔𝒕𝒂𝒓𝒕𝒆𝒅...</i>")
 
         post_msg = await bot.send_photo(
             Var.MAIN_CHANNEL,
@@ -165,22 +159,22 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         dl = await TorDownloader("/ramdisk").download(torrent, name)
         if not dl or not ospath.exists(dl):
-            await editMessage(info_msg, f"<i>Download failed!\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code></i>")
+            await editMessage(info_msg, f"<blockquote><i>𝐷𝑜𝑤𝑛𝑙𝑜𝑎𝑑 𝑓𝑎𝑖𝑙𝑒𝑑!\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code></i></blockquote>")
             return
         if not await verify_sub(dl):
-            await editMessage(info_msg, f"<i><b>Aborted: No English subtitles found.</b></i>\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code>")
+            await editMessage(info_msg, f"<blockquote>𝐴𝑏𝑜𝑟𝑡𝑒𝑑: 𝑁𝑜 𝐸𝑛𝑔𝑙𝑖𝑠ℎ 𝑠𝑢𝑏𝑡𝑖𝑡𝑙𝑒𝑠 𝑓𝑜𝑢𝑛𝑑\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code></blockquote>")
             await aioremove(dl)
             return
-        await editMessage(info_msg, "Getting Audio Information....")
+        await editMessage(info_msg, "<blockquote>𝐺𝑒𝑡𝑡𝑖𝑛𝑔 𝐴𝑢𝑑𝑖𝑜 𝐼𝑛𝑓𝑜𝑟𝑚𝑎𝑡𝑖𝑜𝑛....</blockquote>")
         a_type = a_stream(dl)
         await asleep(0.5) 
-        await editMessage(info_msg, "found audio track(s), moving to subtitles")
+        await editMessage(info_msg, "<blockquote>𝑓𝑜𝑢𝑛𝑑 𝑎𝑢𝑑𝑖𝑜 𝑡𝑟𝑎𝑐𝑘(𝑠), 𝑚𝑜𝑣𝑖𝑛𝑔 𝑡𝑜 𝑠𝑢𝑏𝑡𝑖𝑡𝑙𝑒𝑠</blockquote>")
         s_type = s_stream(dl)
         await asleep(0.5)
-        await editMessage(info_msg, f"<b>Fetching Information!</b>\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code>\n• <i></b>Audio:</b> {a_type}</i>\n• <i></b>Subtitle:</b> {s_type}</i>")
+        await editMessage(info_msg, f"<blockquote><b>Fetching Information!</b>\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code>\n✦ <i></b>𝑨𝒖𝒅𝒊𝒐(𝒔):</b> {a_type}</i>\n✦ <i></b>𝑺𝒖𝒃𝒕𝒊𝒕𝒍𝒆:</b> {s_type}</i></blockquote>")
 
         try:
-            await rep.report(f"Downloaded successfully!\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code>\n• <i></b>Audio:</b> {a_type}</i>\n• <i></b>Subtitle:</b> {s_type}</i>\n\nFile path:{dl}", "info")
+            await rep.report(f"<blockquote>Downloaded successfully!\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code>\n✦ <i></b>𝑨𝒖𝒅𝒊𝒐(𝒔):</b> {a_type}</i>\n✦ <i></b>𝑺𝒖𝒃𝒕𝒊𝒕𝒍𝒆:</b> {s_type}</i>\n\nFile path:{dl}</blockquote>", "info")
         except Exception as e:
             return
 
