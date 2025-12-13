@@ -22,6 +22,39 @@ from pyrogram.errors import MessageNotModified, FloodWait, UserNotParticipant, R
 import feedparser
 from bot import bot, bot_loop, LOGS, Var
 from .reporter import rep
+import subprocess
+
+async def has_english_subs(filepath: str) -> bool:
+    """
+    Returns True if the video has English or undefined subtitles.
+    Returns False if no subtitles or no English subs.
+    """
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-select_streams", "s",
+            "-show_entries", "stream_tags=language",
+            filepath
+        ]
+
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        data = jloads(result.stdout)
+
+        streams = data.get("streams", [])
+        if not streams:
+            return False
+
+        for stream in streams:
+            lang = stream.get("tags", {}).get("language", "").strip().lower()
+            if lang in ["", "eng", "en", "english"]:
+                return True
+
+        return False
+    except Exception as e:
+        LOGS.warning(f"Subs check failed: {e}")
+        return False
 
 def handle_logs(func):
     @wraps(func)
