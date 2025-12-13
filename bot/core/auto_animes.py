@@ -1,4 +1,4 @@
-#fv2 - 4
+#fv2 - 5
 from asyncio import gather, create_task, sleep as asleep, Event
 from asyncio.subprocess import PIPE
 from os import path as ospath, system
@@ -21,6 +21,7 @@ from .tguploader import TgUploader
 from .reporter import rep
 from AnilistPython import Anilist
 from html import escape
+from aiofiles.os import rename as aiorename
 
 
 anilist = Anilist()
@@ -141,16 +142,24 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
                 return
 
         if "[Batch]" in name:
-            await rep.report(f"<blockquote>Batch skipped: {name}</blockquote>", "warning")
+            await rep.report(f"Batch skipped: {name}", "warning")
             return
 
-        await rep.report(f"<blockquote>𝑵𝒆𝒘 𝑬𝒑𝒊𝒔𝒐𝒅𝒆 𝑭𝒐𝒖𝒏𝒅!\n{escape(name)}</blockquote>", "info")
+        await rep.report(f"New episode found → {name}", "info")
 
         title_en = (aniInfo.adata.get("title", {}).get("english") or 
-                   aniInfo.adata.get("title", {}).get("romaji") or  
-                   aniInfo.pdata.get("anime_title"))
+                    aniInfo.adata.get("title", {}).get("romaji") or 
+                    custom_name or 
+                    aniInfo.pdata.get("anime_title") or 
+                    "Unknown Anime")
 
-        info_msg = await sendMessage(Var.MAIN_CHANNEL, f"<blockquote>𝑵𝒆𝒘 𝑬𝒑𝒊𝒔𝒐𝒅𝒆 𝑭𝒐𝒖𝒏𝒅!\n\n✦ 𝑻𝒊𝒕𝒍𝒆: <code>{escape(title_en)}</code>\n✦ 𝑬𝒑𝒊𝒔𝒐𝒅𝒆: <code>{ep_no or '??'}</code>\n\n𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈 𝒔𝒕𝒂𝒓𝒕𝒆𝒅...</blockquote>")
+        info_msg = await sendMessage(
+            Var.MAIN_CHANNEL,
+            f"<b>New Episode Found!</b>\n\n"
+            f"<b>Title:</b> <code>{title_en}</code>\n"
+            f"<b>Episode:</b> <code>{ep_no or '??'}</code>\n\n"
+            f"<i>Downloading started...</i>"
+        )
 
         post_msg = await bot.send_photo(
             Var.MAIN_CHANNEL,
@@ -160,37 +169,36 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         dl = await TorDownloader("/ramdisk").download(torrent, name)
         if not dl or not ospath.exists(dl):
-            await editMessage(info_msg, f"<blockquote>𝐷𝑜𝑤𝑛𝑙𝑜𝑎𝑑 𝑓𝑎𝑖𝑙𝑒𝑑!\n✦ 𝑻𝒊𝒕𝒍𝒆: <code>{escape(title_en)}</code>\n✦ 𝑬𝒑𝒊𝒔𝒐𝒅𝒆: <code>{ep_no or '??'}</code></blockquote>")
+            await editMessage(info_msg, "Download failed!")
             return
+
         if not await verify_sub(dl):
-            await editMessage(info_msg, f"<blockquote>𝐴𝑏𝑜𝑟𝑡𝑒𝑑: 𝑁𝑜 𝐸𝑛𝑔𝑙𝑖𝑠ℎ 𝑠𝑢𝑏𝑡𝑖𝑡𝑙𝑒𝑠 𝑓𝑜𝑢𝑛𝑑\n✦ 𝑻𝒊𝒕𝒍𝒆: <code>{escape(title_en)}</code>\n✦ 𝑬𝒑𝒊𝒔𝒐𝒅𝒆: <code>{ep_no or '??'}</code></blockquote>")
+            await editMessage(info_msg, "Aborted: No English subtitles found.")
             await aioremove(dl)
             return
-        await editMessage(info_msg, "<blockquote>𝐺𝑒𝑡𝑡𝑖𝑛𝑔 𝐴𝑢𝑑𝑖𝑜 𝐼𝑛𝑓𝑜𝑟𝑚𝑎𝑡𝑖𝑜𝑛....</blockquote>")
-        a_type = a_stream(dl)
-        await asleep(0.5) 
-        await editMessage(info_msg, "<blockquote>𝑓𝑜𝑢𝑛𝑑 𝑎𝑢𝑑𝑖𝑜 𝑡𝑟𝑎𝑐𝑘(𝑠), 𝑚𝑜𝑣𝑖𝑛𝑔 𝑡𝑜 𝑠𝑢𝑏𝑡𝑖𝑡𝑙𝑒𝑠</blockquote>")
-        s_type = s_stream(dl)
-        await asleep(0.5)
-        await editMessage(info_msg, f"<blockquote>𝐹𝑒𝑡𝑐ℎ𝑖𝑛𝑔 𝐼𝑛𝑓𝑜𝑟𝑚𝑎𝑡𝑖𝑜𝑛!\n✦ 𝑻𝒊𝒕𝒍𝒆: <code>{escape(title_en)}</code>\n✦ 𝑬𝒑𝒊𝒔𝒐𝒅𝒆: <code>{ep_no or '??'}</code>\n✦ <i>𝑨𝒖𝒅𝒊𝒐(𝒔): {a_type}</i>\n✦ 𝑺𝒖𝒃𝒕𝒊𝒕𝒍𝒆: <i>{s_type}</i></blockquote>")
 
-        try:
-            await rep.report(f"<blockquote>𝐷𝑜𝑤𝑛𝑙𝑜𝑎𝑑𝑒𝑑 𝑠𝑢𝑐𝑐𝑒𝑠𝑠𝑓𝑢𝑙𝑙𝑦!\n✦ 𝑻𝒊𝒕𝒍𝒆: <code>{escape(title_en)}</code>\n✦ 𝑬𝒑𝒊𝒔𝒐𝒅𝒆: <code>{ep_no or '??'}</code>\n✦ 𝑨𝒖𝒅𝒊𝒐(𝒔): <i>{a_type}</i>\n✦ 𝑺𝒖𝒃𝒕𝒊𝒕𝒍𝒆: <i>{s_type}</i>\n\n𝑭𝒊𝒍𝒆 𝒑𝒂𝒕𝒉:{dl}</blockquote>", "info")
-        except Exception as e:
-            return
+        await editMessage(info_msg, "Getting Audio Information....")
+        a_type = await a_stream(dl) or "Unknown"
+        await asleep(0.5)
+        await editMessage(info_msg, "Found audio track(s), moving to subtitles")
+        s_type = await s_stream(dl) or "Unknown"
+        await asleep(0.5)
+        await editMessage(info_msg, f"Fetching Information!\nTitle: {title_en}\nEpisode: {ep_no or '??'}\nAudio(s): {a_type}\nSubtitle: {s_type}")
+
+        await rep.report(f"Downloaded successfully!\nTitle: {title_en}\nEpisode: {ep_no or '??'}\nAudio(s): {a_type}\nSubtitle: {s_type}\nFile path: {dl}", "info")
 
         try:
             await info_msg.delete()
         except:
             pass
 
-        stat_msg = await sendMessage(Var.MAIN_CHANNEL, "𝐵𝑜𝑜𝑡𝑖𝑛𝑔 𝑠𝑒𝑟𝑣𝑒𝑟 𝑓𝑜𝑟 𝑒𝑛𝑐𝑜𝑑𝑖𝑛𝑔... 𝐶ℎ𝑒𝑐𝑘𝑖𝑛𝑔 𝑞𝑢𝑒𝑢𝑒.....")
+        stat_msg = await sendMessage(Var.MAIN_CHANNEL, "Starting encoding...")
 
         post_id = post_msg.id
         ffEvent = Event()
         ff_queued[post_id] = ffEvent
         if ffLock.locked():
-            await editMessage(stat_msg, f"𝑄𝑢𝑒𝑢𝑒𝑑 𝑓𝑜𝑟 𝑒𝑛𝑐𝑜𝑑𝑖𝑛𝑔...\n✦ 𝑻𝒊𝒕𝒍𝒆: <code>{escape(title_en)}</code>\n✦ 𝑬𝒑𝒊𝒔𝒐𝒅𝒆: <code>{ep_no or '??'}</code>\n✦ 𝑨𝒖𝒅𝒊𝒐(𝒔): <i>{a_type}</i>\n✦ 𝑺𝒖𝒃𝒕𝒊𝒕𝒍𝒆: <i>{s_type}</i>")
+            await editMessage(stat_msg, "Queued for encoding...")
         await ffQueue.put(post_id)
         await ffEvent.wait()
 
@@ -199,41 +207,33 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         for qual in Var.QUALS:
             filename = await aniInfo.get_upname(qual, custom_title=custom_name)
 
-            # NEW: PER-QUALITY STATUS MESSAGE + UNIQUE PROGRESS FILE
-            qual_stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"<i>Encoding {qual}p... (Warming up x265 — may take 30–60s)</i>")
-            prog_file = f"/ramdisk/prog_{qual}.txt"  # e.g. /ramdisk/prog_1080.txt
+            qual_stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"Encoding {qual}p... (Warming up x265 — may take 30–60 seconds)")
 
-            # Clean old progress file
+            prog_file = f"/ramdisk/prog_{qual}.txt"
+
             try:
                 await aioremove(prog_file)
             except:
                 pass
 
-            # Move input to RAM (only once, before first quality)
-            if qual == Var.QUALS[0]:  # First quality only
-                await aiorename(dl, self.__ram_input)  # assuming self.__ram_input = "/ramdisk/ff_temp_input.mkv"
-                LOGS.info("Input moved to RAM for encoding")
+            if qual == Var.QUALS[0]:
+                await aiorename(dl, "/ramdisk/ff_temp_input.mkv")
 
-            # Build command with unique progress file
-            ffcode = ffargs[qual].format(self.__ram_input, prog_file, self.__ram_output)
-            LOGS.info(f"Starting {qual}p encode")
+            ffcode = ffargs[qual].format("/ramdisk/ff_temp_input.mkv", prog_file, "/ramdisk/ff_temp_output.mkv")
 
-            # Encode using per-quality message and unique prog file
-            encoder = FFEncoder(qual_stat_msg, self.__ram_input, filename, qual)
-            # Temporary override prog file
-            encoder._FFEncoder__prog_file = prog_file
-            out_path = await encoder.start_encode()
+            out_path = await FFEncoder(qual_stat_msg, dl, filename, qual).start_encode()
 
             if not out_path or not ospath.exists(out_path):
-                await editMessage(qual_stat_msg, f"<i>Encoding failed for {qual}p</i>")
+                await editMessage(qual_stat_msg, f"Encoding failed for {qual}p")
                 continue
 
-            await editMessage(qual_stat_msg, f"<i>Uploading {qual}p...</i>")
+            await editMessage(qual_stat_msg, f"Uploading {qual}p...")
+
             try:
                 msg = await TgUploader(qual_stat_msg).upload(out_path, qual)
             except Exception as e:
                 await rep.report(f"Upload failed for {qual}p: {e}", "error")
-                await editMessage(qual_stat_msg, f"<i>Upload failed for {qual}p</i>")
+                await editMessage(qual_stat_msg, f"Upload failed for {qual}p")
                 continue
 
             link = f"https://t.me/{(await bot.get_me()).username}?start={await encode(f'get-{msg.id * abs(Var.FILE_STORE)}')}"
@@ -248,21 +248,18 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
             await db.saveAnime(ani_id, ep_no, qual, post_id)
             bot_loop.create_task(extra_utils(msg.id, out_path))
 
-            # Delete per-quality status message
             try:
                 await qual_stat_msg.delete()
             except:
                 pass
 
-            # Clean per-quality progress file
             try:
                 await aioremove(prog_file)
             except:
                 pass
 
-        # After all qualities: restore original file
-        if ospath.exists(self.__ram_input):
-            await aiorename(self.__ram_input, dl)
+        if ospath.exists("/ramdisk/ff_temp_input.mkv"):
+            await aiorename("/ramdisk/ff_temp_input.mkv", dl)
 
         ffLock.release()
         await stat_msg.delete()
@@ -272,7 +269,8 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
             ani_cache['completed'].add(ani_id)
 
         if anilist_id:
-            bot_loop.create_task(mark_schedule_uploaded(anilist_id))        
+            bot_loop.create_task(mark_schedule_uploaded(anilist_id))
+
     except Exception as e:
         await rep.report(f"get_animes error (Task {task_id}): {format_exc()}", "error")
         
