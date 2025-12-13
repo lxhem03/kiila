@@ -1,4 +1,4 @@
-#fv2 - 5
+#fv2 - 6
 from asyncio import gather, create_task, sleep as asleep, Event
 from asyncio.subprocess import PIPE
 from os import path as ospath, system
@@ -218,8 +218,6 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
             if qual == Var.QUALS[0]:
                 await aiorename(dl, "/ramdisk/ff_temp_input.mkv")
-
-            ffcode = ffargs[qual].format("/ramdisk/ff_temp_input.mkv", prog_file, "/ramdisk/ff_temp_output.mkv")
 
             out_path = await FFEncoder(qual_stat_msg, dl, filename, qual).start_encode()
 
