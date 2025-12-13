@@ -13,7 +13,7 @@ from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
 from bot.modules.up_posts import mark_schedule_uploaded
 from .tordownload import TorDownloader
 from .database import db 
-from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes, has_english_subs
+from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes, verify_sub, a_stream, s_stream
 from .text_utils import TextEditor
 from .ffencoder import FFEncoder
 from .tguploader import TgUploader
@@ -80,10 +80,9 @@ async def fetch_animes():
             avoid_keywords = task["avoid_keywords"]
             task_id = task["task_id"]
 
-            # Get today's expected episode (if any)
             expected = await db.get_today_airing(anilist_id) if anilist_id else None
             if not expected or expected.get("uploaded", False):
-                continue  # No airing today or already uploaded → skip task
+                continue
 
             expected_ep = expected["expected_ep"]
 
@@ -96,13 +95,11 @@ async def fetch_animes():
                 link = entry.link
                 guid = entry.get("id") or entry.get("guid") or link
 
-                # MUST match expected episode
                 parser = TextEditor(title)
                 ep_num = parser.pdata.get("episode_number")
                 if not ep_num or int(ep_num) != expected_ep:
                     continue
 
-                # Other checks (processed, 1080p, keywords)
                 if await db.is_processed(task_id, guid):
                     continue
 
@@ -115,7 +112,6 @@ async def fetch_animes():
                 if keywords and not all(kw in title.lower() for kw in [k.strip() for k in keywords.split(",") if k.strip()]):
                     continue
 
-                # Process it
                 await db.add_processed_item(task_id, guid)
                 bot_loop.create_task(get_animes(
                     name=title,
@@ -148,12 +144,10 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         await rep.report(f"New episode found → {name}", "info")
 
-        # GET CLEAN TITLE
         title_en = (aniInfo.adata.get("title", {}).get("english") or 
                    aniInfo.adata.get("title", {}).get("romaji") or  
                    aniInfo.pdata.get("anime_title"))
 
-        # SEND "NEW EPISODE" MESSAGE
         info_msg = await sendMessage(
             Var.MAIN_CHANNEL,
             f"<b>New Episode Found!</b>\n\n"
@@ -162,20 +156,18 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
             f"<i>Downloading started...</i>"
         )
 
-        # POST WITH POSTER + CAPTION
         post_msg = await bot.send_photo(
             Var.MAIN_CHANNEL,
             photo=await aniInfo.get_poster(),
             caption=await aniInfo.get_caption()
         )
 
-        # DOWNLOAD
         dl = await TorDownloader("/ramdisk").download(torrent, name)
         if not dl or not ospath.exists(dl):
             await editMessage(info_msg, "<i>Download failed!</i>")
             return
-        if not await has_english_subs(dl):
-            await editMessage(info_msg, "<i>Aborted: No English subtitles found.</i>")
+        if not await verify_sub(dl):
+            await editMessage(info_msg, "<i><b>Aborted: No English subtitles found.</b></i>\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code>")
             await aioremove(dl)
             return
 
