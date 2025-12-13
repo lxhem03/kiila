@@ -214,7 +214,8 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
                 ffLock.release()
                 return
 
-            link = f"https://t.me/{(await bot.get_me()).username}?start={await encode('get-'+str(msg.id * abs(Var.FILE_STORE)))}"
+            base64_string = await encode(f"get-{msg.id * abs(Var.FILE_STORE)}")
+            link = f"https://t.me/{(await bot.get_me()).username}?start={base64_string}"
             text = f"{btn_formatter[qual]}"
             if btns and len(btns[-1]) == 1:
                 btns[-1].insert(1, InlineKeyboardButton(text, url=link))
