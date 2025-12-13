@@ -1,4 +1,4 @@
-# bot/core/ffencoder.py — FULL RAM ENCODING + CORRECT INDENTATION + PROGRESS BAR WORKING
+# bot/core/ffencoder.py \ FULL RAM ENCODING + CORRECT INDENTATION + PROGRESS BAR WORKING
 
 from re import findall 
 from math import floor
@@ -38,11 +38,46 @@ class FFEncoder:
 
         self.__start_time = time()
 
+
     async def progress(self):
         self.__total_time = await mediainfo(self.dl_path, get_duration=True) or 1800.0
         LOGS.info(f"Progress monitoring started | Duration: {self.__total_time}s")
 
+        # Get video FPS and total frames (best effort)
+        total_frames = None
+        fps = 30.0
+        try:
+            import subprocess
+            cmd = [
+                'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                '-show_entries', 'stream=nb_frames,r_frame_rate',
+                '-of', 'default=noprint_wrappers=1',
+                self.dl_path
+            ]
+            out = subprocess.check_output(cmd).decode('utf-8').strip().splitlines()
+            for line in out:
+                if line.startswith('nb_frames='):
+                    try:
+                        total_frames = int(line.split('=', 1)[1])
+                    except:
+                        pass
+                elif line.startswith('r_frame_rate='):
+                    try:
+                        num, den = map(int, line.split('=', 1)[1].split('/'))
+                        fps = num / den if den != 0 else 30.0
+                    except:
+                        pass
+            LOGS.info(f"Detected: total_frames={total_frames}, fps={fps}")
+        except Exception as e:
+            LOGS.warning(f"ffprobe failed: {e}")
+
+        # Fallback estimation
+        if total_frames is None and self.__total_time > 0:
+            total_frames = int(self.__total_time * fps)
+            LOGS.info(f"Estimated total_frames: {total_frames}")
+
         last_percent = -1
+        current_frame = 0
 
         while not (self.__proc is None or self.is_cancelled):
             try:
@@ -57,13 +92,22 @@ class FFEncoder:
                     await asleep(5)
                     continue
 
-                out_time_ms = findall(r"out_time_ms=(\d+)", text)
-                if not out_time_ms:
-                    await asleep(5)
-                    continue
+                # Extract frame and fps
+                frame_match = findall(r"frame=\s*(\d+)", text)
+                fps_match = findall(r"fps=\s*([\d.]+)", text)
+                speed_match = findall(r"speed=\s*([\d.]+)x", text)
 
-                current_time = int(out_time_ms[-1]) / 1_000_000
-                percent = round((current_time / self.__total_time) * 100, 1)
+                if frame_match:
+                    current_frame = int(frame_match[-1])
+
+                current_fps = float(fps_match[-1]) if fps_match else fps
+                speed = float(speed_match[-1]) if speed_match else 1.0
+
+                # Calculate percent from frames
+                if total_frames and total_frames > 0:
+                    percent = round((current_frame / total_frames) * 100, 1)
+                else:
+                    percent = 0
 
                 if abs(percent - last_percent) < 0.5:
                     await asleep(5)
@@ -71,16 +115,17 @@ class FFEncoder:
 
                 last_percent = percent
                 diff = time() - self.__start_time
-                speed_match = findall(r"speed=([\d.]+)x", text)
-                speed = float(speed_match[0]) if speed_match else 1.0
-                eta = (self.__total_time - current_time) / speed if speed > 0 else 0
+
+                # ETA from remaining frames
+                remaining_frames = max(0, total_frames - current_frame) if total_frames else 0
+                eta = remaining_frames / (current_fps * speed) if current_fps > 0 and speed > 0 else 0
 
                 bar = "█" * int(percent // 8) + "░" * (12 - int(percent // 8))
 
                 progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></b></blockquote>
 <blockquote>‣ <b>Status :</b> <i>Encoding {self.__qual}p</i>
     <code>[{bar}]</code> {percent}%</blockquote>
-<blockquote>   ‣ <b>Speed :</b> {speed:.2f}x
+<blockquote>   ‣ <b>Speed :</b> {speed:.2f}x ({current_fps:.1f} fps)
     ‣ <b>Elapsed :</b> {convertTime(diff)}
     ‣ <b>ETA :</b> {convertTime(eta)}</blockquote>
 <blockquote>‣ <b>Progress :</b> <code>{Var.QUALS.index(self.__qual)+1}/{len(Var.QUALS)}</code></blockquote>"""
@@ -92,11 +137,10 @@ class FFEncoder:
                     break
 
             except Exception as e:
-                LOGS.error(f"Progress loop error: {e}")
+                LOGS.error(f"Progress error: {e}")
                 await asleep(10)
 
             await asleep(6)
-
     async def start_encode(self):
         # Clean old temp files
         for f in [self.__prog_file, self.__ram_input, self.__ram_output]:
