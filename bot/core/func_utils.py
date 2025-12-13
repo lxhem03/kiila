@@ -9,8 +9,7 @@ from time import time, sleep
 from traceback import format_exc
 from asyncio import sleep as asleep, create_subprocess_shell
 from asyncio.subprocess import PIPE
-from base64 import urlsafe_b64encode, urlsafe_b64decode
-
+import base64
 from aiohttp import ClientSession
 from aiofiles import open as aiopen
 from aioshutil import rmtree as aiormtree
@@ -341,11 +340,18 @@ async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
         return str(e)
 
 async def encode(string):
-    return (urlsafe_b64encode(string.encode("ascii")).decode("ascii")).strip("=")
+    string_bytes = string.encode("ascii")
+    base64_bytes = base64.urlsafe_b64encode(string_bytes)
+    base64_string = (base64_bytes.decode("ascii")).strip("=")
+    return base64_string
 
-async def decode(b64_str):
-    return urlsafe_b64decode((b64_str.strip("=") + "=" * (-len(b64_str.strip("=")) % 4)).encode("ascii")).decode("ascii")
-
+async def decode(base64_string):
+    base64_string = base64_string.strip("=")
+    base64_bytes = (base64_string + "=" * (-len(base64_string) % 4)).encode("ascii")
+    string_bytes = base64.urlsafe_b64decode(base64_bytes) 
+    string = string_bytes.decode("ascii")
+    return string
+    
 async def is_fsubbed(uid):
     if len(Var.FSUB_CHATS) == 0:
         return True
