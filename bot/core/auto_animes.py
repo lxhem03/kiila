@@ -1,3 +1,4 @@
+#fv2
 from asyncio import gather, create_task, sleep as asleep, Event
 from asyncio.subprocess import PIPE
 from os import path as ospath, system
@@ -164,15 +165,22 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         dl = await TorDownloader("/ramdisk").download(torrent, name)
         if not dl or not ospath.exists(dl):
-            await editMessage(info_msg, "<i>Download failed!</i>")
+            await editMessage(info_msg, f"<i>Download failed!\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code></i>")
             return
         if not await verify_sub(dl):
-            await editMessage(info_msg, "<i><b>Aborted: No English subtitles found.</b></i>\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code>")
+            await editMessage(info_msg, f"<i><b>Aborted: No English subtitles found.</b></i>\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code>")
             await aioremove(dl)
             return
+        await editMessage(info_msg, "Getting Audio Information....")
+        a_type = a_stream(dl)
+        await asleep(0.5) 
+        await editMessage(info_msg, "found audio track(s), moving to subtitles")
+        s_type = s_stream(dl)
+        await asleep(0.5)
+        await editMessage(info_msg, f"<b>Fetching Information!</b>\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code>\n• <i></b>Audio:</b> {a_type}</i>\n• <i></b>Subtitle:</b> {s_type}</i>")
 
         try:
-            await rep.report(f"Downloaded successfully & Has Esub! \n<b>Title:</b> <code>{title_en}</code>\n<b>Episode:</b> <code>{ep_no or '??'}</code>\n\nFile path:{dl}", "info")
+            await rep.report(f"Downloaded successfully!\n• <b>Title:</b> <code>{title_en}</code>\n• <b>Episode:</b> <code>{ep_no or '??'}</code>\n• <i></b>Audio:</b> {a_type}</i>\n• <i></b>Subtitle:</b> {s_type}</i>\n\nFile path:{dl}", "info")
         except Exception as e:
             return
 
