@@ -9,77 +9,137 @@ from bot.core.auto_animes import get_animes
 from bot.core.reporter import rep
 from bot.core.anilist_helper import resolve_anilist_title_and_id
 
-@bot.on_message(command('start') & private)
+@bot.on_message(command("start") & private)
 @new_task
 async def start_msg(client, message):
     uid = message.from_user.id
     from_user = message.from_user
     txtargs = message.text.split()
-    
+
     temp = await sendMessage(message, "<i>Connecting..</i>")
-    
+
+    # Force subscribe
     if not await is_fsubbed(uid):
         txt, btns = await get_fsubs(uid, txtargs)
         if temp:
             await editMessage(temp, txt, InlineKeyboardMarkup(btns))
         return
 
-    if temp: 
-        await temp.delete()
-
     if len(txtargs) <= 1:
+        if temp:
+            await temp.delete()
+
         btns = []
         for elem in Var.START_BUTTONS.split():
             try:
-                bt, link = elem.split('|', maxsplit=1)
+                bt, link = elem.split("|", 1)
             except:
                 continue
-            if len(btns) != 0 and len(btns[-1]) == 1:
-                btns[-1].insert(1, InlineKeyboardButton(bt, url=link))
+
+            if btns and len(btns[-1]) == 1:
+                btns[-1].append(InlineKeyboardButton(bt, url=link))
             else:
                 btns.append([InlineKeyboardButton(bt, url=link)])
-        smsg = Var.START_MSG.format(first_name=from_user.first_name,
-                                    last_name=from_user.first_name,
-                                    mention=from_user.mention, 
-                                    user_id=from_user.id)
+
+        smsg = Var.START_MSG.format(
+            first_name=from_user.first_name,
+            last_name=from_user.last_name,
+            mention=from_user.mention,
+            user_id=from_user.id
+        )
+
         if Var.START_PHOTO:
             await message.reply_photo(
-                photo=Var.START_PHOTO, 
+                photo=Var.START_PHOTO,
                 caption=smsg,
-                reply_markup=InlineKeyboardMarkup(btns) if len(btns) != 0 else None
+                reply_markup=InlineKeyboardMarkup(btns) if btns else None
             )
         else:
-            await sendMessage(message, smsg, InlineKeyboardMarkup(btns) if len(btns) != 0 else None)
+            await sendMessage(
+                message,
+                smsg,
+                InlineKeyboardMarkup(btns) if btns else None
+            )
         return
+
+    # ----------------- FILE DECODE PART -----------------
+
     try:
-        arg = (await decode(txtargs[1])).split('-')
+        decoded = await decode(txtargs[1])
+        args = decoded.split("-")
     except Exception as e:
-        await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-        await editMessage(temp, "<b>Input Link Code Decode Failed !</b>")
-        return
-    if len(arg) == 2 and arg[0] == 'get':
-        try:
-            fid = int(int(arg[1]) / abs(int(Var.FILE_STORE)))
-        except Exception as e:
-            await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-            await editMessage(temp, "<b>Input Link Code is Invalid !</b>")
-            return
-        try:
-            msg = await client.get_messages(Var.FILE_STORE, message_ids=fid)
+        await rep.report(f"User : {uid} | Decode Error : {e}", "error")
+        return await editMessage(temp, "<b>Invalid or Corrupted Link !</b>")
+
+    ids = []
+
+    try:
+        if len(args) == 3 and args[0] == "get":
+            start = int(int(args[1]) / abs(int(Var.FILE_STORE)))
+            end = int(int(args[2]) / abs(int(Var.FILE_STORE)))
+            ids = range(start, end + 1) if start <= end else range(start, end - 1, -1)
+
+        elif len(args) == 2 and args[0] == "get":
+            ids = [int(int(args[1]) / abs(int(Var.FILE_STORE)))]
+
+        else:
+            return await editMessage(temp, "<b>Invalid Link Format !</b>")
+
+    except Exception as e:
+        await rep.report(f"User : {uid} | ID Parse Error : {e}", "error")
+        return await editMessage(temp, "<b>Invalid File ID !</b>")
+
+
+    sent_msgs = []
+
+    try:
+        for fid in ids:
+            msg = await client.get_messages(Var.FILE_STORE, fid)
             if msg.empty:
-                return await editMessage(temp, "<b>File Not Found !</b>")
-            nmsg = await msg.copy(message.chat.id, reply_markup=None)
-            if Var.AUTO_DEL:
-                async def auto_del(msg, timer):
-                    await asleep(timer)
-                    await msg.delete()
-                await sendMessage(message, f'<i>File will be Auto Deleted in {convertTime(Var.DEL_TIMER)}, Forward to Saved Messages Now..</i>')
-                bot_loop.create_task(auto_del(nmsg, Var.DEL_TIMER))
-        except Exception as e:
-            await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-            await editMessage(temp, "<b>File Not Found !</b>")
-    else:
-        await editMessage(temp, "<b>Input Link is Invalid for Usage !</b>")
+                continue
+
+            copied = await msg.copy(
+                chat_id=uid,
+                reply_markup=None,
+                protect_content=Var.PROTECT_CONTENT
+            )
+            sent_msgs.append(copied)
+
+    except Exception as e:
+        await rep.report(f"User : {uid} | Fetch Error : {e}", "error")
+        return await editMessage(temp, "<b>File Not Found !</b>")
+
+    if temp:
+        await temp.delete()
+
+    if Var.AUTO_DEL and sent_msgs:
+        note = await sendMessage(
+            message,
+            f"<i>Files will be auto deleted in {convertTime(Var.DEL_TIMER)}</i>"
+        )
+
+        async def auto_del():
+            await asleep(Var.DEL_TIMER)
+            for m in sent_msgs:
+                try:
+                    await m.delete()
+                except:
+                    pass
+
+            try:
+                reload_url = f"https://t.me/{client.me.username}?start={txtargs[1]}"
+                kb = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("♻️ Get File Again", url=reload_url)]]
+                )
+                await editMessage(
+                    note,
+                    "<b>Your file(s) were deleted successfully.</b>",
+                    kb
+                )
+            except:
+                pass
+
+        bot_loop.create_task(auto_del())
     
 @bot.on_message(command('pause') & private & user(Var.ADMINS))
 async def pause_fetch(client, message):
