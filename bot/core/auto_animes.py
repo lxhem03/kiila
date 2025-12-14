@@ -1,4 +1,4 @@
-#fv2 - 6
+#fv2 - 7
 from asyncio import gather, create_task, sleep as asleep, Event
 from asyncio.subprocess import PIPE
 from os import path as ospath, system
@@ -161,11 +161,33 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
             f"<i>Downloading started...</i>"
         )
 
+        info_msg = await sendMessage(
+            Var.MAIN_CHANNEL,
+            f"<b>New Episode Found!</b>\n\n"
+            f"<b>Title:</b> <code>{title_en}</code>\n"
+            f"<b>Episode:</b> <code>{ep_no or '??'}</code>\n\n"
+            f"<i>Trying to fetch download queue...</i>"  # Better message
+        )
+
         post_msg = await bot.send_photo(
             Var.MAIN_CHANNEL,
             photo=await aniInfo.get_poster(),
             caption=await aniInfo.get_caption()
         )
+
+        post_msg = await bot.send_photo(
+            Var.MAIN_CHANNEL,
+            photo=await aniInfo.get_poster(),
+            caption=await aniInfo.get_caption()
+        )
+        if ffLock.locked():
+            await editMessage(info_msg, "<i>Queued — waiting for current episode to finish processing...</i>")
+
+        await ffLock.acquire()
+
+        try:
+            await editMessage(info_msg, "<i>Downloading started...</i>")
+        
 
         dl = await TorDownloader("/ramdisk").download(torrent, name)
         if not dl or not ospath.exists(dl):
