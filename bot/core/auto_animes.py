@@ -1,5 +1,5 @@
-#fv2 - 7.2
-from asyncio import gather, create_task, sleep as asleep, Event
+#fv2 - 7.3
+from asyncio import gather, Lock, create_task, sleep as asleep, Event
 from asyncio.subprocess import PIPE
 from os import path as ospath, system
 from aiofiles import open as aiopen
@@ -22,10 +22,9 @@ from .reporter import rep
 from AnilistPython import Anilist
 from html import escape
 from aiofiles.os import rename as aiorename
-from asyncio import Lock
+
 
 pipelineLock = Lock()
-
 anilist = Anilist()
 
 btn_formatter = {
@@ -148,7 +147,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
                 await rep.report(f"Batch skipped: {name}", "warning")
                 return
 
-            await rep.report(f"New episode found → {name}", "info")
+            await rep.report(f"New episode found: {name}", "info")
 
             title_en = (
                 aniInfo.adata.get("title", {}).get("english")
@@ -160,10 +159,10 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
             info_msg = await sendMessage(
                 Var.MAIN_CHANNEL,
-                f"<b>New Episode Found!</b>\n\n"
+                f"<blockqoute><b>New Episode Found!</b>\n\n"
                 f"<b>Title:</b> <code>{title_en}</code>\n"
                 f"<b>Episode:</b> <code>{ep_no or '??'}</code>\n\n"
-                f"<i>Downloading started...</i>"
+                f"<i>Downloading started...</i></blockqoute>"
             )
 
             post_msg = await bot.send_photo(
@@ -174,28 +173,22 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
             dl = await TorDownloader("/ramdisk").download(torrent, name)
             if not dl or not ospath.exists(dl):
-                await editMessage(info_msg, "Download failed!")
+                await editMessage(info_msg, f"<blockqoute>Download failed!\n<b>Title:</b> <code>{title_en}</code>\n<b>Episode:</b> <code>{ep_no or '??'}</code></blockqoute>")
                 return
 
             if not await verify_sub(dl):
-                await editMessage(info_msg, "Aborted: No English subtitles found.")
+                await editMessage(info_msg, f"<blockqoute>Aborted: No English subtitles found.\n<b>Title:</b> <code>{title_en}</code>\n<b>Episode:</b> <code>{ep_no or '??'}</code></blockqoute>")
                 await aioremove(dl)
                 return
 
             await editMessage(info_msg, "Getting Audio Information....")
             a_type = await a_stream(dl) or "Unknown"
-
+            await asleep(0.5)
             await editMessage(info_msg, "Checking subtitles...")
             s_type = await s_stream(dl) or "Unknown"
+            await asleep(0.5)
 
-            await editMessage(
-                info_msg,
-                f"Fetching Information!\n"
-                f"Title: {title_en}\n"
-                f"Episode: {ep_no or '??'}\n"
-                f"Audio(s): {a_type}\n"
-                f"Subtitle: {s_type}"
-            )
+            await editMessage(info_msg, f"<blockqoute>Fetching Information!\nTitle: {title_en}\nEpisode: {ep_no or '??'}\nAudio(s): {a_type}\nSubtitle: {s_type}</blockqoute>")
 
             await info_msg.delete()
 
