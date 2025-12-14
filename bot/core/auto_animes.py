@@ -1,5 +1,5 @@
-#fv2 - 7.3
-from asyncio import gather, Lock, create_task, sleep as asleep, Event
+#fv2 - 1
+from asyncio import gather, create_task, sleep as asleep, Event
 from asyncio.subprocess import PIPE
 from os import path as ospath, system
 from aiofiles import open as aiopen
@@ -20,11 +20,8 @@ from .ffencoder import FFEncoder
 from .tguploader import TgUploader
 from .reporter import rep
 from AnilistPython import Anilist
-from html import escape
-from aiofiles.os import rename as aiorename
 
 
-pipelineLock = Lock()
 anilist = Anilist()
 
 btn_formatter = {
@@ -127,110 +124,119 @@ async def fetch_animes():
                 ))
 
 async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=None, task_id=None):
-    async with pipelineLock:
-        try:
-            aniInfo = TextEditor(name)
-            await aniInfo.load_anilist(anilist_id=anilist_id, custom_name=custom_name)
+    try:
+        aniInfo = TextEditor(name)
+        await aniInfo.load_anilist(anilist_id=anilist_id, custom_name=custom_name)
 
-            ani_id = await aniInfo.get_id() or 0
-            ep_no = aniInfo.pdata.get("episode_number")
+        ani_id = await aniInfo.get_id() or 0
+        ep_no = aniInfo.pdata.get("episode_number")
 
-            if ani_id in ani_cache['completed'] and not force:
+        if ani_id in ani_cache['completed'] and not force:
+            return
+
+        if not force:
+            ani_data = await db.getAnime(ani_id)
+            if ani_data and ep_no and (qual_data := ani_data.get(ep_no)) and all(qual_data.values()):
                 return
 
-            if not force:
-                ani_data = await db.getAnime(ani_id)
-                if ani_data and ep_no and (qual_data := ani_data.get(ep_no)) and all(qual_data.values()):
-                    return
+        if "[Batch]" in name:
+            await rep.report(f"<blockquote>Batch skipped: {name}</blockquote>", "warning")
+            return
 
-            if "[Batch]" in name:
-                await rep.report(f"Batch skipped: {name}", "warning")
-                return
+        await rep.report(f"<blockquote>𝑵𝒆𝒘 𝑬𝒑𝒊𝒔𝒐𝒅𝒆 𝑭𝒐𝒖𝒏𝒅!\n{name}</blockquote>", "info")
 
-            await rep.report(f"New episode found: {name}", "info")
+        title_en = (aniInfo.adata.get("title", {}).get("english") or 
+                   aniInfo.adata.get("title", {}).get("romaji") or  
+                   aniInfo.pdata.get("anime_title"))
 
-            title_en = (
-                aniInfo.adata.get("title", {}).get("english")
-                or aniInfo.adata.get("title", {}).get("romaji")
-                or custom_name
-                or aniInfo.pdata.get("anime_title")
-                or "Unknown Anime"
-            )
+        info_msg = await sendMessage(Var.MAIN_CHANNEL, f"<i>𝑵𝒆𝒘 𝑬𝒑𝒊𝒔𝒐𝒅𝒆 𝑭𝒐𝒖𝒏𝒅!</i>\n\n✦ 𝑻𝒊𝒕𝒍𝒆: <code>{title_en}</code>\n✦ 𝑬𝒑𝒊𝒔𝒐𝒅𝒆: <code>{ep_no or '??'}</code>\n\n<i>𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈 𝒔𝒕𝒂𝒓𝒕𝒆𝒅...</i>")
 
-            info_msg = await sendMessage(
-                Var.MAIN_CHANNEL,
-                f"<blockqoute><b>New Episode Found!</b>\n\n"
-                f"<b>Title:</b> <code>{title_en}</code>\n"
-                f"<b>Episode:</b> <code>{ep_no or '??'}</code>\n\n"
-                f"<i>Downloading started...</i></blockqoute>"
-            )
+        post_msg = await bot.send_photo(
+            Var.MAIN_CHANNEL,
+            photo=await aniInfo.get_poster(),
+            caption=await aniInfo.get_caption()
+        )
 
-            post_msg = await bot.send_photo(
-                Var.MAIN_CHANNEL,
-                photo=await aniInfo.get_poster(),
-                caption=await aniInfo.get_caption()
-            )
-
-            dl = await TorDownloader("/ramdisk").download(torrent, name)
-            if not dl or not ospath.exists(dl):
-                await editMessage(info_msg, f"<blockqoute>Download failed!\n<b>Title:</b> <code>{title_en}</code>\n<b>Episode:</b> <code>{ep_no or '??'}</code></blockqoute>")
-                return
-
-            if not await verify_sub(dl):
-                await editMessage(info_msg, f"<blockqoute>Aborted: No English subtitles found.\n<b>Title:</b> <code>{title_en}</code>\n<b>Episode:</b> <code>{ep_no or '??'}</code></blockqoute>")
-                await aioremove(dl)
-                return
-
-            await editMessage(info_msg, "Getting Audio Information....")
-            a_type = await a_stream(dl) or "Unknown"
-            await asleep(0.5)
-            await editMessage(info_msg, "Checking subtitles...")
-            s_type = await s_stream(dl) or "Unknown"
-            await asleep(0.5)
-
-            await editMessage(info_msg, f"<blockqoute>Fetching Information!\nTitle: {title_en}\nEpisode: {ep_no or '??'}\nAudio(s): {a_type}\nSubtitle: {s_type}</blockqoute>")
-
-            await info_msg.delete()
-
-            stat_msg = await sendMessage(Var.MAIN_CHANNEL, "Starting encoding...")
-
-            btns = []
-            for qual in Var.QUALS:
-                filename = await aniInfo.get_upname(qual, custom_title=custom_name)
-                await editMessage(stat_msg, f"Encoding [{qual}p]...")
-
-                out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
-                if not out_path or not ospath.exists(out_path):
-                    continue
-
-                msg = await TgUploader(stat_msg).upload(out_path, qual)
-
-                link = f"https://t.me/{(await bot.get_me()).username}?start={await encode(f'get-{msg.id * abs(Var.FILE_STORE)}')}"
-                text = f"{btn_formatter[qual]} - {convertBytes(msg.document.file_size)}"
-
-                if btns and len(btns[-1]) == 1:
-                    btns[-1].append(InlineKeyboardButton(text, url=link))
-                else:
-                    btns.append([InlineKeyboardButton(text, url=link)])
-
-                await post_msg.edit_reply_markup(InlineKeyboardMarkup(btns))
-                await db.saveAnime(ani_id, ep_no, qual, post_msg.id)
-                bot_loop.create_task(extra_utils(msg.id, out_path))
-
-            await stat_msg.delete()
+        dl = await TorDownloader("/ramdisk").download(torrent, name)
+        if not dl or not ospath.exists(dl):
+            await editMessage(info_msg, f"<blockquote><i>𝐷𝑜𝑤𝑛𝑙𝑜𝑎𝑑 𝑓𝑎𝑖𝑙𝑒𝑑!\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code></i></blockquote>")
+            return
+        if not await verify_sub(dl):
+            await editMessage(info_msg, f"<blockquote>𝐴𝑏𝑜𝑟𝑡𝑒𝑑: 𝑁𝑜 𝐸𝑛𝑔𝑙𝑖𝑠ℎ 𝑠𝑢𝑏𝑡𝑖𝑡𝑙𝑒𝑠 𝑓𝑜𝑢𝑛𝑑\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code></blockquote>")
             await aioremove(dl)
+            return
+        await editMessage(info_msg, "<blockquote>𝐺𝑒𝑡𝑡𝑖𝑛𝑔 𝐴𝑢𝑑𝑖𝑜 𝐼𝑛𝑓𝑜𝑟𝑚𝑎𝑡𝑖𝑜𝑛....</blockquote>")
+        a_type = a_stream(dl)
+        await asleep(0.5) 
+        await editMessage(info_msg, "<blockquote>𝑓𝑜𝑢𝑛𝑑 𝑎𝑢𝑑𝑖𝑜 𝑡𝑟𝑎𝑐𝑘(𝑠), 𝑚𝑜𝑣𝑖𝑛𝑔 𝑡𝑜 𝑠𝑢𝑏𝑡𝑖𝑡𝑙𝑒𝑠</blockquote>")
+        s_type = s_stream(dl)
+        await asleep(0.5)
+        await editMessage(info_msg, f"<blockquote><b>Fetching Information!</b>\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code>\n✦ <i></b>𝑨𝒖𝒅𝒊𝒐(𝒔):</b> {a_type}</i>\n✦ <i></b>𝑺𝒖𝒃𝒕𝒊𝒕𝒍𝒆:</b> {s_type}</i></blockquote>")
 
-            if ani_id:
-                ani_cache['completed'].add(ani_id)
+        try:
+            await rep.report(f"<blockquote>Downloaded successfully!\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code>\n✦ <i></b>𝑨𝒖𝒅𝒊𝒐(𝒔):</b> {a_type}</i>\n✦ <i></b>𝑺𝒖𝒃𝒕𝒊𝒕𝒍𝒆:</b> {s_type}</i>\n\nFile path:{dl}</blockquote>", "info")
+        except Exception as e:
+            return
 
-            if anilist_id:
-                bot_loop.create_task(mark_schedule_uploaded(anilist_id))
+        try:
+            await info_msg.delete()
+        except:
+            pass
 
-        except Exception:
-            await rep.report(
-                f"get_animes error (Task {task_id}): {format_exc()}",
-                "error"
-            )
+        stat_msg = await sendMessage(Var.MAIN_CHANNEL, "<i>Starting encoding...</i>")
+
+        post_id = post_msg.id
+        ffEvent = Event()
+        ff_queued[post_id] = ffEvent
+        if ffLock.locked():
+            await editMessage(stat_msg, "<i>Queued for encoding...</i>")
+        await ffQueue.put(post_id)
+        await ffEvent.wait()
+
+        await ffLock.acquire()
+        btns = []
+        for qual in Var.QUALS:
+            filename = await aniInfo.get_upname(qual, custom_title=custom_name)
+            await editMessage(stat_msg, f"<i>Encoding {qual}p...</i>")
+
+            try:
+                out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
+            except Exception as e:
+                await rep.report(f"Encode failed: {e}", "error")
+                ffLock.release()
+                return
+
+            await editMessage(stat_msg, f"<i>Uploading {qual}p...</i>")
+            try:
+                msg = await TgUploader(stat_msg).upload(out_path, qual)
+            except Exception as e:
+                await rep.report(f"Upload failed: {e}", "error")
+                ffLock.release()
+                return
+
+            link = f"https://t.me/{(await bot.get_me()).username}?start={await encode('get-'+str(msg.id * abs(Var.FILE_STORE)))}"
+            text = f"{btn_formatter[qual]}"
+            if btns and len(btns[-1]) == 1:
+                btns[-1].insert(1, InlineKeyboardButton(text, url=link))
+            else:
+                btns.append([InlineKeyboardButton(text, url=link)])
+
+            await post_msg.edit_reply_markup(InlineKeyboardMarkup(btns))
+            await db.saveAnime(ani_id, ep_no, qual, post_id)
+            bot_loop.create_task(extra_utils(msg.id, out_path))
+
+        ffLock.release()
+        await stat_msg.delete()
+        await aioremove(dl)
+
+        if ani_id:
+            ani_cache['completed'].add(ani_id)
+
+        if anilist_id:
+            bot_loop.create_task(mark_schedule_uploaded(anilist_id))
+
+    except Exception as e:
+        await rep.report(f"get_animes error (Task {task_id}): {format_exc()}", "error")
         
 async def extra_utils(msg_id, out_path):
     msg = await bot.get_messages(Var.FILE_STORE, message_ids=msg_id)
