@@ -1,4 +1,4 @@
-# bot/core/ffencoder.py \ FULL RAM ENCODING + CORRECT INDENTATION + PROGRESS BAR WORKING
+# bot/core/ffencoder.py - FULL RAM ENCODING + CORRECT INDENTATION + PROGRESS BAR WORKING
 
 from re import findall 
 from math import floor
@@ -153,6 +153,8 @@ class FFEncoder:
             except Exception as e:
                 LOGS.error(f"Progress error: {e}")
                 await asleep(10)
+
+        await asleep(5)
 
     async def start_encode(self):
         # Clean old temp files
