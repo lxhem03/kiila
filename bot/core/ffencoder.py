@@ -117,7 +117,7 @@ class FFEncoder:
                 should_update = False
 
                 if abs(percent - last_percent) >= 0.1:
-                should_update = True
+                    should_update = True
 
                 elif now - last_update_time >= UPDATE_INTERVAL:
                     should_update = True
