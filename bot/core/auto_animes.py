@@ -174,6 +174,8 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
 
         try:
             await editMessage(info_msg, "<i>Downloading started...</i>")
+        except: 
+            pass
         
 
         dl = await TorDownloader("/ramdisk").download(torrent, name)
