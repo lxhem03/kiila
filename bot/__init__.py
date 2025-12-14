@@ -24,7 +24,7 @@ ani_cache = {
     'completed': set()
 }
 ffpids_cache = list()
-
+dlLock = Lock()
 ffLock = Lock()
 ffQueue = Queue()
 ff_queued = dict()
