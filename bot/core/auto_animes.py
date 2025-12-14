@@ -207,7 +207,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         for qual in Var.QUALS:
             filename = await aniInfo.get_upname(qual, custom_title=custom_name)
 
-            qual_stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"Encoding {qual}p... (Warming up x265 — may take 30–60 seconds)")
+            await editMessage(stat_msg, f"Booting up server for encoding [{qual}p]")
 
             prog_file = f"/ramdisk/prog_{qual}.txt"
 
@@ -216,10 +216,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
             except:
                 pass
 
-            if qual == Var.QUALS[0]:
-                await aiorename(dl, "/ramdisk/ff_temp_input.mkv")
-
-            out_path = await FFEncoder(qual_stat_msg, dl, filename, qual).start_encode()
+            out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
 
             if not out_path or not ospath.exists(out_path):
                 await editMessage(qual_stat_msg, f"Encoding failed for {qual}p")
