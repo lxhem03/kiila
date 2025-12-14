@@ -21,6 +21,9 @@ ffargs = {
     '360': Var.FFCODE_360,
 }
 
+last_update_time = 0
+UPDATE_INTERVAL = 10
+
 class FFEncoder:
     def __init__(self, message, path, name, qual):
         self.__proc = None
@@ -109,11 +112,22 @@ class FFEncoder:
                 else:
                     percent = 0
 
-                if abs(percent - last_percent) < 0.5:
+                now = time()
+
+                should_update = False
+
+                if abs(percent - last_percent) >= 0.1:
+                should_update = True
+
+                elif now - last_update_time >= UPDATE_INTERVAL:
+                    should_update = True
+
+                if not should_update:
                     await asleep(5)
                     continue
 
                 last_percent = percent
+                last_update_time = now
                 diff = time() - self.__start_time
 
                 # ETA from remaining frames
@@ -140,7 +154,6 @@ class FFEncoder:
                 LOGS.error(f"Progress error: {e}")
                 await asleep(10)
 
-            await asleep(6)
     async def start_encode(self):
         # Clean old temp files
         for f in [self.__prog_file, self.__ram_input, self.__ram_output]:
