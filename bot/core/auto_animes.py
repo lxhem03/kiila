@@ -20,6 +20,7 @@ from .ffencoder import FFEncoder
 from .tguploader import TgUploader
 from .reporter import rep
 from AnilistPython import Anilist
+import gc
 
 
 anilist = Anilist()
@@ -166,10 +167,10 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
             await aioremove(dl)
             return
         await editMessage(info_msg, "<blockquote>𝐺𝑒𝑡𝑡𝑖𝑛𝑔 𝐴𝑢𝑑𝑖𝑜 𝐼𝑛𝑓𝑜𝑟𝑚𝑎𝑡𝑖𝑜𝑛....</blockquote>")
-        a_type = a_stream(dl)
+        a_type = await a_stream(dl)
         await asleep(0.5) 
         await editMessage(info_msg, "<blockquote>𝑓𝑜𝑢𝑛𝑑 𝑎𝑢𝑑𝑖𝑜 𝑡𝑟𝑎𝑐𝑘(𝑠), 𝑚𝑜𝑣𝑖𝑛𝑔 𝑡𝑜 𝑠𝑢𝑏𝑡𝑖𝑡𝑙𝑒𝑠</blockquote>")
-        s_type = s_stream(dl)
+        s_type = await s_stream(dl)
         await asleep(0.5)
         await editMessage(info_msg, f"<blockquote><b>Fetching Information!</b>\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code>\n✦ <i></b>𝑨𝒖𝒅𝒊𝒐(𝒔):</b> {a_type}</i>\n✦ <i></b>𝑺𝒖𝒃𝒕𝒊𝒕𝒍𝒆:</b> {s_type}</i></blockquote>")
 
@@ -196,6 +197,16 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         await ffLock.acquire()
         btns = []
         for qual in Var.QUALS:
+            if qual == "1080":
+                await editMessage(
+                    stat_msg,
+                    "<i>Preparing for 1080p encoding (freeing RAM, please wait)...</i>"
+                )
+
+                gc.collect()
+                await asleep(15)
+                gc.collect()
+                await asleep(15)
             filename = await aniInfo.get_upname(qual, custom_title=custom_name)
             await editMessage(stat_msg, f"<i>Encoding {qual}p...</i>")
 
