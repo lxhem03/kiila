@@ -1,4 +1,4 @@
-# bot/core/ffencoder.py - FULL RAM ENCODING + CORRECT INDENTATION + PROGRESS BAR WORKING
+# bot/core/ffencoder.py \ FULL RAM ENCODING + CORRECT INDENTATION + PROGRESS BAR WORKING
 
 from re import findall 
 from math import floor
@@ -7,9 +7,8 @@ from os import path as ospath
 from aiofiles import open as aiopen
 from aiofiles.os import remove as aioremove, rename as aiorename, path as aiopath
 from asyncio import sleep as asleep, gather, create_subprocess_shell, create_task
-from asyncio.subprocess import PIPE
-import shutil
-
+from asyncio.subprocess import PIPE, DEVNULL
+import shutil 
 from bot import Var, bot_loop, ffpids_cache, LOGS
 from .func_utils import mediainfo, convertBytes, convertTime, editMessage
 from .reporter import rep
@@ -175,7 +174,7 @@ class FFEncoder:
         ffcode = ffargs[self.__qual].format(self.__ram_input, self.__ram_output)
         LOGS.info(f'FFmpeg Command: {ffcode}')
 
-        self.__proc = await create_subprocess_shell(ffcode, stdout=PIPE, stderr=PIPE)
+        self.__proc = await create_subprocess_shell(ffcode, stdout=DEVNULL, stderr=DEVNULL)
         LOGS.info("FFmpeg process started")
 
         ffpids_cache.append(self.__proc.pid)
