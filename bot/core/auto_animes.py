@@ -1,4 +1,4 @@
-#fv2 - 1
+#fv2 - 2
 from asyncio import gather, create_task, sleep as asleep, Event
 from asyncio.subprocess import PIPE
 from os import path as ospath, system
@@ -197,16 +197,6 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
         await ffLock.acquire()
         btns = []
         for qual in Var.QUALS:
-            if qual == "1080":
-                await editMessage(
-                    stat_msg,
-                    "<i>Preparing for 1080p encoding (freeing RAM, please wait)...</i>"
-                )
-
-                gc.collect()
-                await asleep(15)
-                gc.collect()
-                await asleep(15)
             filename = await aniInfo.get_upname(qual, custom_title=custom_name)
             await editMessage(stat_msg, f"<i>Encoding {qual}p...</i>")
 
