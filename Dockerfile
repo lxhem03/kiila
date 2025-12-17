@@ -4,7 +4,7 @@ RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
     sed -i '/security.debian.org/d' /etc/apt/sources.list
 
 RUN apt-get update && apt-get install -y \
-    git wget curl pv jq python3-dev mediainfo gcc \
+    git wget curl pv jq python3-dev fontconfig mediainfo gcc \
     libsm6 libxext6 libfontconfig1 libxrender1 libgl1-mesa-glx \
     ca-certificates xz-utils tar procps \
     && rm -rf /var/lib/apt/lists/*
