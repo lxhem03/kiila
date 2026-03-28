@@ -2,11 +2,9 @@ from re import findall
 from math import floor
 from time import time
 from os import path as ospath
-from aiofiles import open as aiopen
-from aiofiles.os import remove as aioremove, rename as aiorename, path as aiopath
+from aiofiles.os import remove as aioremove, path as aiopath
 from asyncio import sleep as asleep, gather, create_subprocess_shell, create_task
 from asyncio.subprocess import PIPE, DEVNULL
-import shutil
 import shlex
 
 from bot import Var, bot_loop, ffpids_cache, LOGS
@@ -20,8 +18,7 @@ ffargs = {
     '360': Var.FFCODE_360,
 }
 
-last_update_time = 0
-UPDATE_INTERVAL = 10
+UPDATE_INTERVAL = 10  # seconds between Telegram message edits
 
 
 class FFEncoder:
@@ -33,239 +30,225 @@ class FFEncoder:
         self.__qual = qual
         self.dl_path = path
         self.__total_time = None
-
-        self.__ram_input = "/ramdisk/ff_temp_input.mkv"
-        self.__ram_output = "/ramdisk/ff_temp_output.mkv"
-        self.__prog_file = "/ramdisk/prog.txt"
         self.final_path = ospath.join("encode", name)
-
         self.__start_time = time()
 
     # ------------------------------------------------------------------
-    # FFmpeg VALIDATION (NO ENCODING, NO RAM MOVE)
+    # STDERR DRAIN  — keeps the stderr pipe from blocking FFmpeg
     # ------------------------------------------------------------------
-    async def validate_ffmpeg(self):
-        """
-        Validates FFmpeg arguments, filters, and encoders.
-        Does NOT encode, does NOT touch RAM, does NOT create output.
-        Catches syntax / drawtext / encoder init errors early.
-        """
-        validate_cmd = (
-            "ffmpeg -loglevel error -nostats -hide_banner "
-            f"-i {shlex.quote(self.dl_path)} "
-            '-vf '
-            "\"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-            "text='validation':x=0:y=0:fontsize=12:fontcolor=white\" "
-            "-f null -"
-        )
-
-        LOGS.info(f"Validating FFmpeg command: {validate_cmd}")
-
-        proc = await create_subprocess_shell(
-            validate_cmd,
-            stdout=DEVNULL,
-            stderr=PIPE
-        )
-
-        _, err = await proc.communicate()
-
-        if proc.returncode != 0:
-            error_text = err.decode(errors="ignore")
-            LOGS.error(f"FFmpeg validation failed: {error_text}")
-            await rep.report(f"FFmpeg validation failed:\n{error_text}", "error")
-            return False
-
-        LOGS.info("FFmpeg validation successful")
-        return True
+    async def __drain_stderr(self):
+        try:
+            while True:
+                line = await self.__proc.stderr.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="ignore").strip()
+                if text:
+                    LOGS.debug(f"FFmpeg stderr: {text}")
+        except Exception as e:
+            LOGS.debug(f"stderr drain ended: {e}")
 
     # ------------------------------------------------------------------
-    # PROGRESS MONITOR (IMPROVED ffprobe HANDLING)
+    # PROGRESS MONITOR — reads structured key=value blocks from stdout
     # ------------------------------------------------------------------
     async def progress(self):
         self.__total_time = await mediainfo(self.dl_path, get_duration=True) or 1800.0
-        LOGS.info(f"Progress monitoring started | Duration: {self.__total_time}s")
 
+        # --- get total frames + fps via ffprobe ---
         total_frames = None
         fps = 30.0
-
-        # Use async subprocess for ffprobe to avoid blocking the event loop
         try:
-            cmd = [
-                'ffprobe', '-v', 'error', '-select_streams', 'v:0',
-                '-show_entries', 'stream=nb_frames,r_frame_rate',
-                '-of', 'default=noprint_wrappers=1:nokey=1',
-                self.dl_path
-            ]
-            proc = await create_subprocess_shell(
-                ' '.join(cmd),
-                stdout=PIPE,
-                stderr=DEVNULL
+            cmd = (
+                f"ffprobe -v error -select_streams v:0 "
+                f"-show_entries stream=nb_frames,r_frame_rate "
+                f"-of default=noprint_wrappers=1 "
+                f"{shlex.quote(self.dl_path)}"
             )
-            out, _ = await proc.communicate()
-            lines = out.decode('utf-8').strip().splitlines()
-
-            for line in lines:
+            probe = await create_subprocess_shell(cmd, stdout=PIPE, stderr=DEVNULL)
+            out, _ = await probe.communicate()
+            for line in out.decode("utf-8", errors="ignore").splitlines():
                 line = line.strip()
-                if not line:
-                    continue
-                if 'nb_frames' in line or total_frames is None:  # Prefer nb_frames if available
+                if line.startswith("nb_frames="):
                     try:
-                        total_frames = int(line)
-                        continue
+                        total_frames = int(line.split("=", 1)[1])
                     except ValueError:
                         pass
-                try:
-                    num, den = map(int, line.split('/'))
-                    fps = num / den if den else 30.0
-                except:
-                    pass
-
+                elif line.startswith("r_frame_rate="):
+                    fps_str = line.split("=", 1)[1]
+                    if "/" in fps_str:
+                        try:
+                            num, den = map(int, fps_str.split("/"))
+                            if den:
+                                fps = num / den
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            fps = float(fps_str)
+                        except Exception:
+                            pass
         except Exception as e:
-            LOGS.warning(f"Async ffprobe failed: {e}")
+            LOGS.warning(f"ffprobe failed: {e}")
 
         if total_frames is None:
             total_frames = int(self.__total_time * fps)
 
-        LOGS.info(f"Calculated total_frames: {total_frames} | fps: {fps}")
+        LOGS.info(f"Progress monitor: total_frames={total_frames} fps={fps}")
 
-        last_percent = -1
+        progress_dict = {}
+        last_update_time = 0.0
         current_frame = 0
+        current_fps = fps
+        speed = 1.0
 
-        global last_update_time
+        try:
+            while True:
+                line = await self.__proc.stdout.readline()
+                if not line:
+                    break  # FFmpeg exited / EOF
 
-        while not (self.__proc is None or self.is_cancelled):
-            try:
-                if not await aiopath.exists(self.__prog_file):
-                    await asleep(5)
+                if self.is_cancelled:
+                    break
+
+                text = line.decode("utf-8", errors="ignore").strip()
+                if not text:
                     continue
 
-                async with aiopen(self.__prog_file, 'r') as f:
-                    text = await f.read()
+                # parse key=value
+                if "=" in text:
+                    k, v = text.split("=", 1)
+                    progress_dict[k.strip()] = v.strip()
 
-                if not text.strip():
-                    await asleep(5)
+                # FFmpeg emits a "progress" key at the end of each stats block
+                if "progress" not in progress_dict:
                     continue
 
-                frame_match = findall(r"frame=\s*(\d+)", text)
-                fps_match = findall(r"fps=\s*([\d.]+)", text)
-                speed_match = findall(r"speed=\s*([\d.]+)x", text)
+                # encoding finished
+                if progress_dict.get("progress") == "end":
+                    LOGS.info("FFmpeg reported progress=end")
+                    break
 
-                if frame_match:
-                    current_frame = int(frame_match[-1])
+                # --- parse block values ---
+                try:
+                    frame_str = progress_dict.get("frame", "0")
+                    current_frame = int(frame_str) if frame_str.isdigit() else current_frame
+                except Exception:
+                    pass
 
-                current_fps = float(fps_match[-1]) if fps_match else fps
-                speed = float(speed_match[-1]) if speed_match else 1.0
+                try:
+                    fps_str = progress_dict.get("fps", "")
+                    if fps_str and fps_str.upper() != "N/A":
+                        val = float(fps_str)
+                        if val > 0:
+                            current_fps = val
+                except Exception:
+                    pass
 
-                percent = round((current_frame / total_frames) * 100, 1)
+                try:
+                    sp = progress_dict.get("speed", "1x")
+                    if sp and sp.upper() != "N/A":
+                        speed = float(sp.replace("x", ""))
+                    if speed <= 0:
+                        speed = 1.0
+                except Exception:
+                    pass
+
+                progress_dict.clear()
+
+                # --- throttle Telegram edits ---
                 now = time()
-
-                if abs(percent - last_percent) < 0.1 and now - last_update_time < UPDATE_INTERVAL:
-                    await asleep(5)
+                if now - last_update_time < UPDATE_INTERVAL:
                     continue
-
-                last_percent = percent
                 last_update_time = now
 
-                diff = time() - self.__start_time
+                # --- build UI ---
+                percent = round(min((current_frame / total_frames) * 100, 100), 1)
+                elapsed = now - self.__start_time
                 remaining_frames = max(0, total_frames - current_frame)
                 eta = remaining_frames / (current_fps * speed) if current_fps > 0 else 0
 
                 bar = "█" * int(percent // 8) + "░" * (12 - int(percent // 8))
 
-                progress_str = f"""<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></b></blockquote>
-
-<blockquote>‣ <b>Status :</b> <i>Encoding {self.__qual}p</i>
-    <code>[{bar}]</code> {percent}%</blockquote>
-<blockquote>   ‣ <b>Speed :</b> {speed:.2f}x ({current_fps:.1f} fps)
-    ‣ <b>Elapsed :</b> {convertTime(diff)}
-    ‣ <b>ETA :</b> {convertTime(eta)}</blockquote>
-<blockquote>‣ <b>Progress :</b> <code>{Var.QUALS.index(self.__qual)+1}/{len(Var.QUALS)}</code></blockquote>"""
+                progress_str = (
+                    f"<blockquote>‣ <b>Anime Name :</b> <b><i>{self.__name}</i></b></blockquote>\n\n"
+                    f"<blockquote>‣ <b>Status :</b> <i>Encoding {self.__qual}p</i>\n"
+                    f"    <code>[{bar}]</code> {percent}%</blockquote>\n"
+                    f"<blockquote>   ‣ <b>Speed :</b> {speed:.2f}x ({current_fps:.1f} fps)\n"
+                    f"    ‣ <b>Elapsed :</b> {convertTime(elapsed)}\n"
+                    f"    ‣ <b>ETA :</b> {convertTime(eta)}</blockquote>\n"
+                    f"<blockquote>‣ <b>Progress :</b> <code>{Var.QUALS.index(self.__qual)+1}/{len(Var.QUALS)}</code></blockquote>"
+                )
 
                 await editMessage(self.message, progress_str)
 
-                if "progress=end" in text:
-                    break
+        except Exception as e:
+            LOGS.error(f"Progress loop error: {e}")
 
-            except Exception as e:
-                LOGS.error(f"Progress error: {e}")
-                await asleep(10)
-
-        await asleep(5)
+        await asleep(2)
 
     # ------------------------------------------------------------------
-    # MAIN ENCODE FLOW (RAM LOGIC UNTOUCHED)
+    # MAIN ENCODE FLOW  — no RAM disk, direct file encode
     # ------------------------------------------------------------------
     async def start_encode(self):
-        # 1️⃣ Validate FFmpeg FIRST
-        if not await self.validate_ffmpeg():
-            return None
+        # 1️⃣ Build FFmpeg command
+        #    Insert "-progress pipe:1" right after "ffmpeg" so we get
+        #    structured stdout progress without touching the ffargs format.
+        raw_cmd = ffargs[self.__qual].format(
+            shlex.quote(self.dl_path),
+            shlex.quote(self.final_path)
+        )
 
-        # 2️⃣ Clean old temp files
-        for f in [self.__prog_file, self.__ram_output]:
-            if await aiopath.exists(f):
-                await aioremove(f)
+        # Inject -progress pipe:1 after the ffmpeg binary call
+        ffcode = raw_cmd.replace("ffmpeg ", "ffmpeg -progress pipe:1 ", 1)
+        LOGS.info(f"FFmpeg Command: {ffcode}")
 
-        async with aiopen(self.__prog_file, 'w'):
-            pass
+        await editMessage(
+            self.message,
+            f"<i>Encoding {self.__qual}p… (FFmpeg warming up)</i>"
+        )
 
-        # 3️⃣ Move input to RAM
-        await aiorename(self.dl_path, self.__ram_input)
-
-        # 4️⃣ Build FFmpeg command
-        ffcode = ffargs[self.__qual].format(self.__ram_input, self.__ram_output)
-        LOGS.info(f'FFmpeg Command: {ffcode}')
-
+        # 2️⃣ Launch FFmpeg
         self.__proc = await create_subprocess_shell(
             ffcode,
-            stdout=DEVNULL,
-            stderr=PIPE
+            stdout=PIPE,   # structured progress lives here
+            stderr=PIPE    # encoder logs/warnings (drained async)
         )
 
         ffpids_cache.append(self.__proc.pid)
 
-        await editMessage(self.message, f"<i>Encoding {self.__qual}p... (x265 warm‑up)</i>")
-
-        _, return_code = await gather(
+        # 3️⃣ Run progress reader + stderr drain + wait concurrently
+        _, _, return_code = await gather(
             create_task(self.progress()),
+            create_task(self.__drain_stderr()),
             self.__proc.wait()
         )
 
         if self.__proc.pid in ffpids_cache:
             ffpids_cache.remove(self.__proc.pid)
 
+        # 4️⃣ Cancelled?
         if self.is_cancelled:
-            if await aiopath.exists(self.__ram_input):
-                await aiorename(self.__ram_input, self.dl_path)
             return None
 
+        # 5️⃣ FFmpeg failed?
         if return_code != 0:
-            err = await self.__proc.stderr.read()
-            error_text = err.decode(errors='ignore')
-            LOGS.error(f"FFmpeg failed: {error_text}")
-            await rep.report(f"FFmpeg failed:\n{error_text}", "error")
-
-            if await aiopath.exists(self.__ram_input):
-                await aiorename(self.__ram_input, self.dl_path)
+            LOGS.error(f"FFmpeg exited with code {return_code}")
+            await rep.report(f"FFmpeg failed (exit {return_code}) for {self.__name}", "error")
             return None
 
-        # 6️⃣ Move output from RAM
-        if await aiopath.exists(self.__ram_output):
-            shutil.move(self.__ram_output, self.final_path)
-
-        if await aiopath.exists(self.__ram_input):
-            await aiorename(self.__ram_input, self.dl_path)
-
-        try:
-            await aioremove(self.__prog_file)
-        except:
-            pass
+        # 6️⃣ Verify output exists
+        if not await aiopath.exists(self.final_path):
+            LOGS.error("FFmpeg finished but output file not found!")
+            await rep.report(f"Output missing after encode: {self.final_path}", "error")
+            return None
 
         return self.final_path
 
+    # ------------------------------------------------------------------
     async def cancel_encode(self):
         self.is_cancelled = True
         if self.__proc:
             try:
                 self.__proc.kill()
-            except:
+            except Exception:
                 pass
