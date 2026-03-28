@@ -158,7 +158,7 @@ async def get_animes(name, torrent, force=False, anilist_id=None, custom_name=No
             caption=await aniInfo.get_caption()
         )
 
-        dl = await TorDownloader("/ramdisk").download(torrent, name)
+        dl = await TorDownloader("/encode").download(torrent, name)
         if not dl or not ospath.exists(dl):
             await editMessage(info_msg, f"<blockquote><i>𝐷𝑜𝑤𝑛𝑙𝑜𝑎𝑑 𝑓𝑎𝑖𝑙𝑒𝑑!\n✦ <b>𝑻𝒊𝒕𝒍𝒆:</b> <code>{title_en}</code>\n✦ <b>𝑬𝒑𝒊𝒔𝒐𝒅𝒆:</b> <code>{ep_no or '??'}</code></i></blockquote>")
             return
