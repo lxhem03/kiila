@@ -191,15 +191,19 @@ class FFEncoder:
     # ------------------------------------------------------------------
     async def start_encode(self):
         # 1️⃣ Build FFmpeg command
-        #    Insert "-progress pipe:1" right after "ffmpeg" so we get
-        #    structured stdout progress without touching the ffargs format.
-        raw_cmd = ffargs[self.__qual].format(
-            shlex.quote(self.dl_path),
-            shlex.quote(self.final_path)
-        )
+        # The FFCODE strings already wrap {} in single quotes e.g. -i '{}'
+        # so do NOT use shlex.quote() — it would double-quote the paths.
+        raw_cmd = ffargs[self.__qual].format(self.dl_path, self.final_path)
 
-        # Inject -progress pipe:1 after the ffmpeg binary call
+        # Strip flags that suppress stdout (they break -progress pipe:1)
+        for flag in ["-loglevel error", "-loglevel quiet", "-nostats", "-hide_banner"]:
+            raw_cmd = raw_cmd.replace(flag, "")
+
+        # Inject -progress pipe:1 right after the ffmpeg binary
         ffcode = raw_cmd.replace("ffmpeg ", "ffmpeg -progress pipe:1 ", 1)
+
+        # Collapse any extra whitespace left by the removals
+        ffcode = " ".join(ffcode.split())
         LOGS.info(f"FFmpeg Command: {ffcode}")
 
         await editMessage(
