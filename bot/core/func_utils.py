@@ -5,7 +5,7 @@ from json import loads as jloads
 from re import findall
 from math import floor
 from os import path as ospath
-from time import time, sleep
+from time import time
 from traceback import format_exc
 from asyncio import sleep as asleep, create_subprocess_shell
 from asyncio.subprocess import PIPE
@@ -319,25 +319,7 @@ async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
             raise e
         return str(e)
         
-async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
-    try:
-        if not msg:
-            return None
-        return await msg.edit_text(text=text, disable_web_page_preview=True, 
-                                        reply_markup=buttons, **kwargs)
-    except FloodWait as f:
-        await rep.report(f, "warning")
-        sleep(f.value * 1.2)
-        return await editMessage(msg, text, buttons, get_error, **kwargs)
-    except ReplyMarkupInvalid:
-        return await editMessage(msg, text, None, get_error, **kwargs)
-    except (MessageNotModified, MessageIdInvalid):
-        pass
-    except Exception as e:
-        await rep.report(format_exc(), "error")
-        if get_error:
-            raise e
-        return str(e)
+
 
 async def encode(string):
     string_bytes = string.encode("ascii")
