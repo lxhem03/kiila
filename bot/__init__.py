@@ -53,6 +53,8 @@ class Var:
     FFCODE_360 = getenv("FFCODE_360") or """ffmpeg -i '{}' -progress '{}' -preset superfast -c:v libx264 -s 640x360 -pix_fmt yuv420p -crf 30 -c:a libopus -b:a 32k -c:s copy -map 0 -ac 2 -ab 32k -vbr 2 -level 3.1 '{}' -y"""
     QUALS = getenv("QUALS", "360 480 720 1080").split()
     
+    UPSTREAM_REPO = getenv("UPSTREAM_REPO", "").strip()
+    UPSTREAM_BRANCH = getenv("UPSTREAM_BRANCH", "lxhem03").strip() or "main"
     AS_DOC = getenv("AS_DOC", "True").lower() == "true"
     PROTECT_CONTENT = getenv("PROTECT_CONTENT", "False").lower() == "true"
     THUMB = getenv("THUMB", "https://te.legra.ph/file/621c8d40f9788a1db7753.jpg")
