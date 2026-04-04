@@ -11,7 +11,7 @@ class MongoDB:
         self.__db = self.__client[database_name]
         self.__animes = self.__db.animes[Var.BOT_TOKEN.split(':')[0]]
         self.__rss_tasks = self.__db.rss_tasks
-        self.__today_airing = self.__db.today_airing
+        self._today_airing = self.__db.today_airing
 
     async def getAnime(self, ani_id):
         botset = await self.__animes.find_one({'_id': ani_id})
@@ -80,7 +80,7 @@ class MongoDB:
 
     async def set_today_airing(self, anilist_id: int, expected_ep: int):
         today = datetime.now(ist).strftime("%Y-%m-%d")
-        await self.__today_airing.update_one(
+        await self._today_airing.update_one(
             {"anilist_id": anilist_id, "date": today},
             {"$set": {"expected_ep": expected_ep, "uploaded": False}},
             upsert=True
@@ -88,11 +88,14 @@ class MongoDB:
 
     async def get_today_airing(self, anilist_id: int):
         today = datetime.now(ist).strftime("%Y-%m-%d")
-        return await self.__today_airing.find_one({"anilist_id": anilist_id, "date": today})
+        return await self._today_airing.find_one({"anilist_id": anilist_id, "date": today})
+
+    async def get_all_today_airing(self, date_str: str):
+        return await self._today_airing.find({"date": date_str}).to_list(length=None)
 
     async def mark_today_uploaded(self, anilist_id: int):
         today = datetime.now(ist).strftime("%Y-%m-%d")
-        await self.__today_airing.update_one(
+        await self._today_airing.update_one(
             {"anilist_id": anilist_id, "date": today},
             {"$set": {"uploaded": True}}
         )
